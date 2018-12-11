@@ -48,6 +48,34 @@ class MemoryDBHandler:
 
             return True if rows else False
 
+    def put(self, obj):
+        if obj is None:
+            return
+        if type(obj) is Author:
+            if not self.exists(obj):
+                self.__authors.append(obj)
+        elif type(obj) is Article:
+            if not self.exists(obj):
+                self.__articles.append(obj)
+        elif type(obj) is Annotation:
+            if not self.exists(obj):
+                self.__annotations.append(obj)
+        elif type(obj) is Tag:
+            if not self.exists(obj):
+                self.__tags.append(obj)
+        elif type(obj) is RefFile:
+            if not self.exists(obj):
+                self.__files.append(obj)
+        elif type(obj) is Reference:
+            if not self.exists(obj):
+                self.__refs.append(obj)
+        else:
+            click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
+
+
+    def checkout(self, uuid: uuid.UUID):
+        pass
+
     def scratchall(self):
         if click.confirm(click.style('[IMemDB] Irrecoverably scratch all unsaved stash objects?', bold=True, fg='magenta')):
             self.__authors = []

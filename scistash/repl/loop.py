@@ -37,6 +37,7 @@ class ReplHandler:
         'stash': {
             'current': {
                 'id': 'curr_id',
+                'fetch': 'curr_fetch',
                 'show': 'curr_show',
                 'save': 'curr_save',
                 'scratch': 'curr_scratch',
@@ -117,9 +118,11 @@ class ReplHandler:
             'sdb': {
                 'list': {
                     'authors': 'sdb_list_auths',    # DONE
-                    'articles': 'sdb_list_arts',
-                    'tags': 'sdb_list_tags',
-                    'files': 'sdb_list_files',
+                    'articles': 'sdb_list_arts',    # DONE
+                    'annots': 'sdb_list_annots',
+                    'tags': 'sdb_list_tags',        # DONE
+                    'files': 'sdb_list_files',      # DONE
+                    'refs': 'sdb_list_refs'         # DONE
                 },
                 'stats': 'sdb_stats',
                 'dump': {
@@ -162,21 +165,8 @@ class ReplHandler:
 
     @current.setter
     def current(self, val):
-        if self.current is not None:
-            if type(self.current) is Author:
-                self.__pending['authors'].append(self.current)
-            elif type(self.current) is Article:
-                self.__pending['articles'].append(self.current)
-            else:
-                pass
-
+        self.__pending.put(self.current)
         self.__current = val
-
-    def addpending(self, tp, obj):
-        self.__pending[tp].append(obj)
-
-    def deletepending(self, tp, which):
-        pass
 
     def makeprompt(self):
         if len(self.__opstack) == 1:
@@ -318,6 +308,14 @@ class ReplHandler:
             self.__dispatch_sdb_list_auths(cmd, args)
         elif cmd == 'sdb_list_arts':
             self.__dispatch_sdb_list_arts(cmd, args)
+        elif cmd == 'sdb_list_annots':
+            self.__dispatch_sdb_list_annots(cmd, args)
+        elif cmd == 'sdb_list_tags':
+            self.__dispatch_sdb_list_tags(cmd, args)
+        elif cmd == 'sdb_list_files':
+            self.__dispatch_sdb_list_files(cmd, args)
+        elif cmd == 'sdb_list_refs':
+            self.__dispatch_sdb_list_refs(cmd, args)
         else:
             pass
 
@@ -362,6 +360,30 @@ class ReplHandler:
 
     def __dispatch_sdb_list_arts(self, cmd, args):
         outcome = self.__db.list('articles')
+
+        if outcome is not None:
+            click.echo_via_pager(outcome)
+
+    def __dispatch_sdb_list_annots(self, cmd, args):
+        outcome = self.__db.list('annotations')
+
+        if outcome is not None:
+            click.echo_via_pager(outcome)
+
+    def __dispatch_sdb_list_tags(self, cmd, args):
+        outcome = self.__db.list('tags')
+
+        if outcome is not None:
+            click.echo_via_pager(outcome)
+
+    def __dispatch_sdb_list_files(self, cmd, args):
+        outcome = self.__db.list('files')
+
+        if outcome is not None:
+            click.echo_via_pager(outcome)
+
+    def __dispatch_sdb_list_refs(self, cmd, args):
+        outcome = self.__db.list('refs')
 
         if outcome is not None:
             click.echo_via_pager(outcome)
