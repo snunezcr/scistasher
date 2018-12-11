@@ -1,0 +1,367 @@
+# Copyright @ 2018
+#
+# Santiago Nunez-Corrales <snunezcr@gmail.com>
+# A Scientific Reference Stasher (SciStash)
+#
+# This software is intended for personal use and does not imply any guarantees
+# in functionality or performance.
+from fuzzyfinder import fuzzyfinder
+from prompt_toolkit import prompt
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.completion import Completer, Completion
+from scistash.database.sqlitedb import SQLiteHandler
+from scistash.database.memorydb import MemoryDBHandler
+from scistash.entities.author import Author
+from scistash.entities.article import Article
+from scistash.entities.annotation import Annotation
+import click
+
+
+class StashCompleter(Completer):
+    def __init__(self):
+        self.__vocabulary = ''
+
+    def setvocab(self, vocabulary):
+        self.__vocabulary = vocabulary
+
+    def get_completions(self, document, complete_event):
+        word_before_cursor = document.get_word_before_cursor(WORD=True)
+        matches = fuzzyfinder(word_before_cursor, self.__vocabulary)
+        for m in matches:
+            yield Completion(m, start_position=-len(word_before_cursor))
+
+
+class ReplHandler:
+    levels = {
+        'stash': {
+            'current': {
+                'id': 'curr_id',
+                'show': 'curr_show',
+                'save': 'curr_save',
+                'scratch': 'curr_scratch',
+                'edit': 'curr_edit',
+                'tag': {
+                    'add': 'art_tag_add',
+                    'rem': 'art_tag_rem',
+                    'show': 'art_tag_show'
+                },
+                'attach': {
+                    'file': {
+                        'add': 'curr_att_file_add',
+                        'edit': 'curr_att_file_edit',
+                        'rem': 'curr_att_file_rem',
+                        'show': 'curr_att_file_show',
+                        'save': 'curr_att_file_save'
+                    },
+                    'refkey': {
+                        'add': 'curr_att_rky_add',
+                        'rem': 'curr_att_rky_rem',
+                        'show': 'curr_att_rky_show'
+                    }
+                }
+            },
+            'pending': {
+                'show': 'pend_show',
+                'save': 'pend_save',
+                'scratch': 'pend_scratch',
+                'checkout': {
+                    'author': 'pend_chko_auth',
+                    'article': 'pend_chko_art',
+                    'annotation': 'pend_chko_annot',
+                    'image': 'pend_chko_img',
+                    'pdf': 'pend_chko_pdf',
+                    'ref': 'pend_chko_ref'
+                }
+            },
+            'authors': {
+                'new': 'auth_new',                  #DONE
+                'checkout': 'auth_checkout',
+                'find': {
+                    'uuid': 'auth_find_uuid',
+                    'year': 'auth_find_year',
+                    'fname': 'auth_find_fname',
+                    'lname': 'auth_find_lname',
+                    'title': 'auth_find_title'
+                },
+            },
+            'articles': {
+                'find': {
+                    'refkey': 'art_find_refkey',
+                    'fname': 'art_find_fname',
+                    'lname': 'art_find_lname',
+                    'year': 'art_find_year',
+                    'title': 'art_find_title'
+                },
+                'new': 'art_new',
+                'checkout': 'art_checkout',
+                'delete': 'art_delete',
+                'cite': {
+                    'bibtex': 'art_cite_bibtex',
+                    'apa': 'art_cite_apa'
+                },
+                'retract': 'art_retract'
+            },
+            'annotations': {
+                'new': 'annot_new',
+                'checkout': 'annot_checkout',
+                'find': {
+                    'annotkey': 'annot_find_annotkey',
+                    'refkey': 'annot_find_refkey',
+                    'fname': 'annot_find_fname',
+                    'lname': 'annot_find_lname',
+                    'year': 'annot_find_year',
+                    'title': 'annot_find_title'
+                },
+            },
+            'sdb': {
+                'list': {
+                    'authors': 'sdb_list_auths',    # DONE
+                    'articles': 'sdb_list_arts',
+                    'tags': 'sdb_list_tags',
+                    'files': 'sdb_list_files',
+                },
+                'stats': 'sdb_stats',
+                'dump': {
+                    'csv': 'sdb_dump_csv',
+                    'sql': 'sdb_dump_sql',
+                    'bibtex': 'sdb_dump_bibtex',
+                    'apa': 'sdb_dump_apa'
+                }
+            },
+            'help': 'meta',
+            'saveall': 'meta',
+            'scratchall': 'meta',                   # DONE
+            'clear': 'meta',                        # DONE
+            'end': 'meta',                          # DONE
+            'top': 'meta',                          # DONE
+            'quit': 'meta'                          # DONE
+        }
+    }
+
+    def __init__(self, db, dryrun=False, create=True):
+        click.echo(click.style('Scientific Reference Stasher', fg='green', bold=True))
+        click.echo('Santiago Núñez-Corrales <nunezco2@illinois.edu>\n')
+        click.echo('For available commands, enter \'help\' into the REPL.\n')
+        self.__db = SQLiteHandler(db, dryrun, create)
+        self.__createdb = create
+        self.__opstack = ['stash']
+        self.__scomp = StashCompleter()
+        self.__scomp.setvocab(self.levels.get('stash').keys())
+        self.__currprompt = ''
+        self.__current = None
+        self.__pending = MemoryDBHandler()
+
+    @property
+    def db(self):
+        return self.__db
+
+    @property
+    def current(self):
+        return self.__current
+
+    @current.setter
+    def current(self, val):
+        if self.current is not None:
+            if type(self.current) is Author:
+                self.__pending['authors'].append(self.current)
+            elif type(self.current) is Article:
+                self.__pending['articles'].append(self.current)
+            else:
+                pass
+
+        self.__current = val
+
+    def addpending(self, tp, obj):
+        self.__pending[tp].append(obj)
+
+    def deletepending(self, tp, which):
+        pass
+
+    def makeprompt(self):
+        if len(self.__opstack) == 1:
+            self.__currprompt = self.__opstack[0]
+        elif len(self.__opstack) == 2:
+            self.__currprompt = '{0}|{1}'.format(self.__opstack[0], self.__opstack[1])
+        else:
+            self.__currprompt = '|'.join(self.__opstack)
+
+    def opstacktolevel(self):
+        out = self.levels
+
+        for i in self.__opstack:
+            out = out.get(i)
+
+        return out
+
+    def run(self):
+        while True:
+            # Set the prompt based on the operation stack
+            self.makeprompt()
+            self.__scomp.setvocab(self.opstacktolevel())
+            user_input = prompt(self.__currprompt + '> ',
+                                history=FileHistory('history.stash'),
+                                auto_suggest=AutoSuggestFromHistory(),
+                                completer=self.__scomp)
+            self.process_input(user_input.split())
+
+    def process_input(self, user_input):
+        if not user_input:
+            return
+        if user_input[0] == 'quit':
+            # TODO: when changes are pending or database is open, ask user to resolve
+            self.__db.close()
+            click.echo(click.style('Exiting.', fg='magenta'))
+            quit()
+        elif user_input[0] == 'clear':
+            click.clear()
+        elif user_input[0] == 'saveall':
+            # TODO
+            pass
+        elif user_input[0] == 'scratchall':
+            self.__pending.scratchall()
+        elif user_input[0] == 'top':
+            self.__opstack = ['stash']
+        elif user_input[0] == 'help':
+            outtext = """
+            \x1b[1m\x1b[32mScientific Reference Stasher\x1b[0m\x1b[0m
+            \x1b[32mHelp Manual\x1b[0m
+            
+            
+            \x1b[32mGeneral commands\x1b[0m
+            
+               \x1b[1mCommand\x1b[0m            \x1b[1mFunction\x1b[0m
+                quit                Exit the interpreter
+                clear               Clear the current screen
+                curr                Display current data object under modification
+                help                Display this help
+                end                 Exit most immediate context (right-most in prompt)
+                
+            \x1b[32mAuthor\x1b[0m
+            
+               \x1b[1mCommand\x1b[0m            \x1b[1mFunction\x1b[0m
+                list                List current authors
+                new                 Add new author
+                edit                Change information about an author
+                find                Search an author
+                save                Save information of the most recently updated author
+            """
+            click.echo_via_pager(outtext)
+        elif user_input[0] == 'end':
+            if len(self.__opstack) is 1:
+                click.echo(click.style('Already at top level.', fg='magenta'))
+            else:
+                self.__opstack = self.__opstack[:-1]
+        else:
+            # Process each command depending on where the last runnable command stops
+            def recursiveparse(level, cmdlist, context):
+                # Case 1: the list has been exhausted with a non-executable command path
+                if not cmdlist:
+                    return context, 'none', [], level.keys()
+                # Case 2: we have either a keyword that does not exhaust the terms or an unknown term
+                elif len(cmdlist) == 1:
+                    # Check if it is a valid command, i.e. in the current keys of the dictionary
+                    if cmdlist[0] in list(level.keys()):
+                        if type(level.get(cmdlist[0])) is str:
+                            # This is an executable command
+                            return context, level.get(cmdlist[0]), [], level.keys()
+                        else:
+                            # This is a non-executable command
+                            return context + [cmdlist[0]], 'none', [], level.get(cmdlist[0]).keys()
+                    else:
+                        # Not a valid command or parameter
+                        return context, 'none', [], level.keys()
+                # Case 3: we have more elements, in which one is in the non-executable command path and the second is
+                else:
+                    # Check if the first parameter is a command
+                    if not cmdlist[0] in list(level.keys()):
+                        # Not a valid command or parameter
+                        return context, 'none', [], level.keys()
+                    # Check if the first parameter is an executable command
+                    elif type(level.get(cmdlist[0])) is str:
+                        return context, level.get(cmdlist[0]), cmdlist[1:], level.keys()
+                    # Check if the second element is a valid keyword
+                    elif not cmdlist[1] in list(level.get(cmdlist[0]).keys()):
+                        return context, 'none', [], level.keys()
+                    # Check if the second element is an executable command (no children)
+                    elif type(level.get(cmdlist[0]).get(cmdlist[1])) is str:
+                        return context+[cmdlist[0]], level.get(cmdlist[0]).get(cmdlist[1]), cmdlist[2:], \
+                               level.get(cmdlist[0]).keys()
+                    else:
+                        # All other cases
+                        return recursiveparse(level.get(cmdlist[0]), cmdlist[1:], context + [cmdlist[0]])
+
+            ctx, cmd, args, voc = recursiveparse(self.opstacktolevel(), user_input, [])
+
+            if (not ctx) and (cmd == 'none') and (not args):
+                click.echo(click.style('Command not valid in this context.', fg='red'))
+            else:
+                if cmd != 'none':
+                    self.dispatch(cmd, args)
+                else:
+                    self.__opstack += ctx
+
+    # Implementation of helper functions
+
+    # Implementation of each command
+    def dispatch(self, cmd, args):
+        # Current
+        if cmd == 'curr_id':
+            self.__dispatch_curr_id(cmd, args)
+        elif cmd == 'curr_show':
+            self.__dispatch_curr_show(cmd, args)
+        # Authors
+        elif cmd == 'auth_new':
+            self.__dispatch_auth_new(cmd, args)
+        # Sdb
+        elif cmd == 'sdb_list_auths':
+            self.__dispatch_sdb_list_auths(cmd, args)
+        elif cmd == 'sdb_list_arts':
+            self.__dispatch_sdb_list_arts(cmd, args)
+        else:
+            pass
+
+    def __dispatch_curr_id(self, cmd, args):
+        if self.current is None:
+            click.echo(click.style('No current working element has been set.', fg='magenta'))
+        else:
+            click.echo(click.style('ID of current working element: {0}.'.format(self.current.id), fg='blue'))
+
+    def __dispatch_curr_show(self, cmd, args):
+        if self.current is None:
+            click.echo(click.style('No current working element has been set.', fg='magenta'))
+        else:
+            if type(self.current) is Author:
+                currtype = 'Author'
+            elif type(self.current) is Article:
+                currtype = 'Article'
+            elif type(self.current) is Annotation:
+                currtype = 'Annotation'
+            else:
+                currtype = 'Unknown'
+
+            click.echo_via_pager(click.style('Current: {}\n'.format(currtype), fg='blue') + str(self.current))
+
+    def __dispatch_auth_new(self, cmd, args):
+        if args:
+            auth = Author(args[0], args[1])
+            self.current = auth
+            click.echo(click.style('New author created.', fg='blue'))
+        else:
+            fname = prompt('First name: ')
+            lname = prompt('Last name: ')
+            auth = Author(fname, lname)
+            self.current = auth
+            click.echo(click.style('New author created.', fg='blue'))
+
+    def __dispatch_sdb_list_auths(self, cmd, args):
+        outcome = self.__db.list('authors')
+
+        if outcome is not None:
+            click.echo_via_pager(outcome)
+
+    def __dispatch_sdb_list_arts(self, cmd, args):
+        outcome = self.__db.list('articles')
+
+        if outcome is not None:
+            click.echo_via_pager(outcome)
