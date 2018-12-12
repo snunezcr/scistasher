@@ -10,7 +10,6 @@ import uuid
 
 
 class Article(CitableEntity):
-    table = 'articles'
 
     def __init__(self, refkey='', authors=None, title='', year=0, journal='', volume=0,
                  number=0, pages=(0, 0), retracted=False):

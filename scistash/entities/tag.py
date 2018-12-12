@@ -9,7 +9,6 @@ from scistash.entities.attachment import Attachment
 
 
 class Tag(Attachment):
-    table = 'tags'
 
     def __init__(self, objid, text: str):
         super().__init__(objid, text)

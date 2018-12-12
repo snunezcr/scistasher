@@ -10,7 +10,6 @@ import uuid
 
 
 class Reference(Attachment):
-    table = 'references'
 
     def __init__(self, objid, refkey: uuid.UUID):
         super().__init__(objid, refkey)

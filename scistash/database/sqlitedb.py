@@ -11,6 +11,7 @@ from scistash.entities.annotation import Annotation
 from scistash.entities.tag import Tag
 from scistash.entities.rfile import RefFile
 from scistash.entities.reference import Reference
+from scistash.database.memorydb import MemoryDBHandler
 from sqlite3 import Error
 import sqlite3
 import pathlib
@@ -19,11 +20,85 @@ import uuid
 
 
 class SQLiteHandler:
-    # Known tables
-    known = ['authors', 'articles', 'annotations', 'tags', 'files', 'refs']
+    # Functions to convert from tuples to simple objects (no nesting)
+    # We define these first to have the function maps ready
+    @staticmethod
+    def __tupletoauthor(tp):
+        lid, fn, ln = tp
+        return Author(fn, ln)
+
+    @staticmethod
+    def __tupletoarticle(tp):
+        lid, rk, yy, tt, jj, vl, nm, ps, pe, rt = tp
+        return Article(rk, None, tt, yy, jj, vl, nm, (ps, pe), rt)
+
+    @staticmethod
+    def __tupletoannotation(tp):
+        lid, oid, ocls, sm, ifo = tp
+        return Annotation(oid, sm, ifo)
+
+    @staticmethod
+    def __tupletotag(tp):
+        lid, oid, ocls, cnt = tp
+        return Tag(oid, cnt)
+
+    # This includes the blob
+    # TODO: in future versions, depending on the size of objects, a total memory quota is needed as a macro parameter
+    @staticmethod
+    def __tupletofile(tp):
+        lid, oid, ocls, fn, ft, ds, fs, cn = tp
+        RefFile(oid, fn, ft, ds, fs, cn)
+
+    @staticmethod
+    def __tupletoref(tp):
+        lid, oid, ocls, rid = tp
+        Reference(oid, rid)
+
+    # Type-to-tuple-function mapping to recover from database
+    __typetupleobjfunction = {
+        Author: __tupletoauthor,
+        Article: __tupletoarticle,
+        Annotation: __tupletoannotation,
+        Tag: __tupletotag,
+        RefFile: __tupletofile,
+        Reference: __tupletoref
+    }
+
+    # TODO: generate functions that take objects and produce SQL statements to store data
+
+    # TODO: generate functions that take objects and produce SQL statements to delete data
+
+    # Type-to-table mapping
+    __typetotablemap = {
+        Author: 'authors',
+        Article: 'articles',
+        Annotation: 'annotations',
+        Tag: 'tags',
+        RefFile: 'files',
+        Reference: 'refs'
+    }
+
+    # Table-to-type mapping (no elegant and efficient way to obtain from Python's dictionary
+    __tabletotypemapper = {
+        'authors': Author,
+        'articles': Article,
+        'annotations': Annotation,
+        'tags': Tag,
+        'files': RefFile,
+        'refs': Reference
+    }
+
     # SQL statements for all tables
     # Given that we will take care of all operations, foreign keys have been forgone. This may not be the best
     # practice, but preserves generality.
+    __authorstable = """
+    CREATE TABLE IF NOT EXISTS authors (
+        uuid text PRIMARY KEY,
+        firstname text NOT NULL,
+        lastname text NOT NULL
+    )
+    """
+
     __articlestable = """
     CREATE TABLE IF NOT EXISTS articles (
         uuid text PRIMARY KEY,
@@ -36,14 +111,6 @@ class SQLiteHandler:
         pagstart int NOT NULL,
         pagend int NOT NULL,
         retracted int not NULL
-    )
-    """
-
-    __authorstable = """
-    CREATE TABLE IF NOT EXISTS authors (
-        uuid text PRIMARY KEY,
-        firstname text NOT NULL,
-        lastname text NOT NULL
     )
     """
 
@@ -81,6 +148,7 @@ class SQLiteHandler:
             fname text NOT NULL,
             ftype text NOT NULL,
             descr text NOT NULL,
+            fsize int NOT NULL,
             content blob NOT NULL
         )
         """
@@ -94,10 +162,12 @@ class SQLiteHandler:
      )
      """
 
-    def __init__(self, db, dryrun, create):
+    def __init__(self, db, dryrun, create, memdb: MemoryDBHandler):
         self.__conn = None
         self.__cursor = None
         self.__dryrun = dryrun
+        # Needed to facilitate saving and fetching
+        self.__memdb = memdb
 
         if create:
             try:
@@ -239,7 +309,7 @@ class SQLiteHandler:
                 return None
         # Files
         elif objtype == 'files':
-            iid, oid, cls, fnm, fty, dsc = tuple
+            iid, oid, cls, fnm, fty, dsc, fsz = tuple
 
             if cls == 'author':
                 self.__cursor.execute('SELECT firstname, lastname FROM authors WHERE id={0}'.format(oid))
@@ -250,8 +320,8 @@ class SQLiteHandler:
                     return None
                 else:
                     fn, ln = data
-                    return '\t[{0}]\t\t{3} [{4}] {5}\t<{2},{1}>\t{7}, {6}'.format(iid, oid, cls, fnm,
-                                                                                  fty, dsc, fn, ln)
+                    return '\t[{0}]\t\t{3} [{4}, {8} bytes] {5}\t<{2},{1}>\t{7}, {6}'.format(iid, oid, cls, fnm,
+                                                                                  fty, dsc, fn, ln, fsz)
             elif cls == 'article':
                 self.__cursor.execute('SELECT year, title, journal FROM articles WHERE id={0}'.format(oid))
                 data = self.__cursor.fetchone()
@@ -347,7 +417,7 @@ class SQLiteHandler:
                     self.__cursor.execute('SELECT * FROM {0}'.format(objtable))
                 else:
                     click.echo(click.style("BEFORE FILE", bold=True, fg='yellow'))
-                    self.__cursor.execute('SELECT uuid, objuuid, objclass, fname, ftype, descr FROM {0}'.format(objtable))
+                    self.__cursor.execute('SELECT uuid, objuuid, objclass, fname, ftype, descr, fsize FROM {0}'.format(objtable))
 
                 rows = self.__cursor.fetchall()
 
@@ -357,25 +427,77 @@ class SQLiteHandler:
             else:
                 return '\n'.join(map(lambda x: self.__listrender(x, objtable), rows))
 
+    def exists_fetch(self, oid: uuid.UUID, otype):
+        if not otype in self.__typetotablemap.keys():
+            click.echo(click.style('[SQLite] Unknown object type.', fg='red'))
+            return False
+        else:
+            self.__cursor.execute('SELECT uuid FROM {0} WHERE uuid={1}'.format(self.__typetotablemap[otype], str(oid)))
+            return True if self.__cursor.fetchone() else False
+
+
     def exists(self, obj):
         if not self.__cursor:
             click.echo(click.style('[SQLite] Database connection does not exist.', fg='red'))
             return False
         elif not obj:
             click.echo(click.style('[SQLite] Cannot find null object.', fg='red'))
-        elif not obj.table in self.known:
-            click.echo(click.style('[SQLite] Unknown object type.', fg='red'))
             return False
         else:
-            self.__cursor.execute('SELECT uuid FROM {0} WHERE uuid={1}'.format(obj.table, str(obj.id)))
-            return True if self.__cursor.fetchone() else False
+            return self.exists_fetch(obj.id, type(obj))
 
-    def new(self, obj):
+    def fetch(self, oid: uuid.UUID, otype):
+        if not self.exists_fetch(oid, otype):
+            click.echo(click.style('[SQLite] Object not present in stash.', fg='magenta'))
+            return None
+        else:
+            self.__cursor.execute('SELECT * FROM {0}'.format(self.__typetotablemap[otype]))
+            data = self.__cursor.fetchone()
+
+            if data:
+                return self.__typetupleobjfunction[otype](data)
+            else:
+                return None
+
+    def checkout(self, oid: uuid.UUID, fhash: dict):
+        if oid not in fhash.keys():
+            click.echo(click.style('[FetchH] Object not present across the complete stash.', fg='magenta'))
+            return None
+
+        otype = fhash[oid]
+        data = self.__memdb.checkout_fetch(oid, otype)
+
+        if not data:
+            data = self.fetch(oid, otype)
+
+        return data
+
+    def save(self, obj, prior: uuid.UUID):
         if obj is None:
-            click.echo(click.style('[SQLite] Cannot create null object.', fg='red'))
-        #else:
-            # We proceed case by case
-         #   if type(obj) is Author:
+            click.echo(click.style('[SQLite] Cannot save null object.', fg='red'))
+        elif obj.id == prior:
+            click.echo(click.style('[SQLite] Ignoring saving for same object.', fg='magenta'))
+        else:
+            if type(obj) is Author:
+                pass
+                #self.__conn.execute('INSERT OR IGNORE INTO authors')
 
-    #
-    #def buildhash(self):
+    def buildfetchhash(self):
+        click.echo('[SQLite] Attempting to construct a fetch hash...')
+
+        if self.__cursor is None:
+            click.echo(click.style('[SQLite] Fetch hash construction failed.', fg='red'))
+            return None
+        else:
+            fhash = {}
+
+            for table in list(self.__typetotablemap.values()):
+                self.__cursor.execute('SELECT DISTINCT uuid FROM {0}'.format(table))
+                for t in self.__cursor.fetchall():
+                    fhash[uuid.UUID(t)] = self.__tabletotypemapper[table]
+
+            click.echo('[SQLite] Fetch hash constructed.')
+            return fhash
+
+    # TODO: build context hash for object types to help users
+    # def buildcontexthash(self):

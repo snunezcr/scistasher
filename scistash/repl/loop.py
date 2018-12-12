@@ -36,11 +36,11 @@ class ReplHandler:
     levels = {
         'stash': {
             'current': {
-                'id': 'curr_id',
+                'id': 'curr_id',                        # DONE
                 'fetch': 'curr_fetch',
-                'show': 'curr_show',
+                'show': 'curr_show',                    # DONE
                 'save': 'curr_save',
-                'scratch': 'curr_scratch',
+                'scratch': 'curr_scratch',              # DONE
                 'edit': 'curr_edit',
                 'tag': {
                     'add': 'art_tag_add',
@@ -64,14 +64,13 @@ class ReplHandler:
             },
             'pending': {
                 'show': 'pend_show',
-                'save': 'pend_save',
                 'scratch': 'pend_scratch',
                 'checkout': {
                     'author': 'pend_chko_auth',
                     'article': 'pend_chko_art',
                     'annotation': 'pend_chko_annot',
-                    'image': 'pend_chko_img',
-                    'pdf': 'pend_chko_pdf',
+                    'tag': 'pend_chko_tag',
+                    'file': 'pend_chko_file',
                     'ref': 'pend_chko_ref'
                 }
             },
@@ -142,18 +141,23 @@ class ReplHandler:
         }
     }
 
-    def __init__(self, db, dryrun=False, create=True):
+    def __init__(self, db, dryrun=False, create=True, memquota=0):
         click.echo(click.style('Scientific Reference Stasher', fg='green', bold=True))
         click.echo('Santiago Núñez-Corrales <nunezco2@illinois.edu>\n')
         click.echo('For available commands, enter \'help\' into the REPL.\n')
-        self.__db = SQLiteHandler(db, dryrun, create)
+        # Database handlers
+        self.__pending = MemoryDBHandler(memquota)
+        self.__db = SQLiteHandler(db, dryrun, create, self.__pending)
         self.__createdb = create
+        # Contextual and fetch hashes
+        self.__fetchhash = self.__db.buildfetchhash()
+        # Operation stack handler
         self.__opstack = ['stash']
+        # Prompt handler
         self.__scomp = StashCompleter()
         self.__scomp.setvocab(self.levels.get('stash').keys())
         self.__currprompt = ''
         self.__current = None
-        self.__pending = MemoryDBHandler()
 
     @property
     def db(self):
@@ -165,7 +169,7 @@ class ReplHandler:
 
     @current.setter
     def current(self, val):
-        self.__pending.put(self.current)
+        self.__pending.put(self.current, self.__fetchhash)
         self.__current = val
 
     def makeprompt(self):
@@ -300,6 +304,8 @@ class ReplHandler:
             self.__dispatch_curr_id(cmd, args)
         elif cmd == 'curr_show':
             self.__dispatch_curr_show(cmd, args)
+        elif cmd == 'curr_scratch':
+            self.__dispatch_curr_scratch(cmd, args)
         # Authors
         elif cmd == 'auth_new':
             self.__dispatch_auth_new(cmd, args)
@@ -323,7 +329,7 @@ class ReplHandler:
         if self.current is None:
             click.echo(click.style('No current working element has been set.', fg='magenta'))
         else:
-            click.echo(click.style('ID of current working element: {0}.'.format(self.current.id), fg='blue'))
+            click.echo(click.style('ID of current working element:\t{0}'.format(self.current.id), fg='blue'))
 
     def __dispatch_curr_show(self, cmd, args):
         if self.current is None:
@@ -338,7 +344,11 @@ class ReplHandler:
             else:
                 currtype = 'Unknown'
 
-            click.echo_via_pager(click.style('Current: {}\n'.format(currtype), fg='blue') + str(self.current))
+            click.echo(click.style('Current: {}\n'.format(currtype), fg='blue') + str(self.current))
+
+    def __dispatch_curr_scratch(self, cmd, args):
+        if self.current is not None:
+            self.current = None
 
     def __dispatch_auth_new(self, cmd, args):
         if args:

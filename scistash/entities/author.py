@@ -9,7 +9,6 @@ import uuid
 
 
 class Author:
-    table = 'authors'
 
     def __init__(self, first='', last=''):
         self.__firstname = first

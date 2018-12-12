@@ -17,71 +17,93 @@ import uuid
 
 class MemoryDBHandler:
 
-    def __init__(self):
-        click.echo('[IMemDB] Initializing in memory stash...')
-        self.__authors = []
-        self.__articles = []
-        self.__annotations = []
-        self.__tags = []
-        self.__files = []
-        self.__refs = []
+    def __init__(self, memquota=0):
+        click.echo('[IMemDB] Initializing in-memory stash...')
+        self.__memquota = memquota
+        self.__data = {
+            Author: [],
+            Article: [],
+            Annotation: [],
+            Tag: [],
+            RefFile: [],
+            Reference: []
+        }
         click.echo('[IMemDB] In-memory stash initialized.')
 
+    # Most internal implementation
+    def exists_fetch(self, oid, otype):
+        rows = list(filter(lambda x: x.id == oid, self.__data[otype]))
+        return True if rows else False
+
+    # Implementation with entire object, not just ids and types
     def exists(self, obj):
         if not obj:
             click.echo(click.style('[IMemDB] Cannot find null object.', fg='red'))
+            return False
         else:
-            if type(obj) is Author:
-                rows = list(filter(lambda x: x.id == obj.id, self.__authors))
-            elif type(obj) is Article:
-                rows = list(filter(lambda x: x.id == obj.id, self.__articles))
-            elif type(obj) is Annotation:
-                rows = list(filter(lambda x: x.id == obj.id, self.__annotations))
-            elif type(obj) is Tag:
-                rows = list(filter(lambda x: x.id == obj.id, self.__tags))
-            elif type(obj) is RefFile:
-                rows = list(filter(lambda x: x.id == obj.id, self.__files))
-            elif type(obj) is Reference:
-                rows = list(filter(lambda x: x.id == obj.id, self.__refs))
-            else:
-                rows = []
+            return self.exists_fetch(obj.id, type(obj))
 
-            return True if rows else False
-
-    def put(self, obj):
+    def put(self, obj, fhash: dict):
         if obj is None:
             return
-        if type(obj) is Author:
-            if not self.exists(obj):
-                self.__authors.append(obj)
-        elif type(obj) is Article:
-            if not self.exists(obj):
-                self.__articles.append(obj)
-        elif type(obj) is Annotation:
-            if not self.exists(obj):
-                self.__annotations.append(obj)
-        elif type(obj) is Tag:
-            if not self.exists(obj):
-                self.__tags.append(obj)
-        elif type(obj) is RefFile:
-            if not self.exists(obj):
-                self.__files.append(obj)
-        elif type(obj) is Reference:
-            if not self.exists(obj):
-                self.__refs.append(obj)
+        elif self.exists(obj):
+            click.echo(click.style('[IMemDB] Object already exists in memory.', fg='magenta'))
+        elif type(obj) not in self.__data.keys():
+            click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
+        else:
+            fhash[obj.id] = type(obj)
+            self.__data[type(obj)].append(obj)
+
+    def __fetch(self, oid: uuid.UUID, otype):
+        if otype not in self.__data.keys():
+            click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
+            return None
+        else:
+            for obj in self.__data[otype]:
+                if obj.id == oid:
+                    return obj
+
+            return None
+
+    def checkout_fetch(self, oid: uuid.UUID, otype):
+        if not self.exists_fetch(oid, otype):
+            click.echo(click.style('[IMemDB] Object does not exist in memory.', fg='magenta'))
+            return None
+
         else:
             click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
+            data = self.__fetch(oid, otype)
 
+            if data:
+                # We only work with immutable data in memory
+                self.scratch_fetch(oid, otype)
 
-    def checkout(self, uuid: uuid.UUID):
-        pass
+            return data
 
-    def scratchall(self):
+    def scratch_fetch(self, oid: uuid.UUID, otype, fhash: dict):
+        if otype not in self.__data.keys():
+            click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
+        elif not self.exists_fetch(oid, otype):
+            click.echo(click.style('[IMemDB] Object does not exist in memory.', fg='magenta'))
+        else:
+            self.__data[otype] = list(filter(lambda x: x.id != oid, self.__data[otype]))
+            fhash.pop(oid, None)
+            click.echo(click.style('[IMemDB] Object has been scratched.', fg='green'))
+
+    def scratchall(self, fhash: dict):
         if click.confirm(click.style('[IMemDB] Irrecoverably scratch all unsaved stash objects?', bold=True, fg='magenta')):
-            self.__authors = []
-            self.__articles = []
-            self.__annotations = []
-            self.__tags = []
-            self.__files = []
-            self.__refs = []
+            # This removes the keys. At all times, if the object is in the database, it is not in memory and viceversa
+            for tp in self.__data.keys():
+                for obj in self.__data[tp]:
+                    fhash.pop(obj.id, None)
+
+            # And reset the data entities
+            self.__data = {
+                Author: [],
+                Article: [],
+                Annotation: [],
+                Tag: [],
+                RefFile: [],
+                Reference: []
+            }
             click.echo('[IMemDB] All in-memory stash objects have been scratched.')
