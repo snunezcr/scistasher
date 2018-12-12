@@ -10,18 +10,25 @@ from pathlib import Path
 
 
 class RefFile(Attachment):
-    table = 'files'
 
-    def __init__(self, objid, path: Path, ftyp: str, desc: str):
+    def __init__(self, objid, path: Path, ftyp: str, desc: str, fsz=0, cnt=None):
         self.__fname = path.name
-        self.__fsize = path.stat().st_size
         self.__ftype = ftyp
         self.__desc = desc
-        super().__init__(objid, path.read_bytes())
+
+        if cnt is None:
+            # Creating from file
+            self.__fsize = path.stat().st_size
+            super().__init__(objid, path.read_bytes())
+        else:
+            self.__fsize = fsz
+            # Creating from db
+            super().__init__(objid, cnt)
 
     @property
     def fname(self):
         return self.__fname
+
 
     @property
     def ftype(self):
