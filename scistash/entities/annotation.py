@@ -10,19 +10,24 @@ import uuid
 
 class Annotation:
 
-    def __init__(self, refuuid: uuid.UUID, sm: str, info: str):
-        self.__refuuid = refuuid
+    def __init__(self, objuuid: uuid.UUID, objcls: type, sm: str, info: str):
+        self.__objuuid = objuuid
+        self.__objcls = objcls
         self.__summary = sm
         self.__info = info
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, str(self.__refuuid) + self.__summary + self.__info)
+        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, str(self.__objuuid) + self.__summary + self.__info)
 
     @property
     def id(self):
         return self.__id
 
     @property
-    def refuuid(self):
-        return self.__refuuid
+    def objuuid(self):
+        return self.__objuuid
+
+    @property
+    def objcls(self):
+        return self.__objcls
 
     @property
     def summary(self):
@@ -54,10 +59,7 @@ class Annotation:
         self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     def stringify(self):
-        return str(self.__refuuid) + self.__summary + self.__info
+        return str(self.__objuuid) + self.__summary + self.__info
 
     def __str__(self):
-        return '==> Annotation: {3}\n\tSummary: {0}\n\tInformation {1}\n\tBelongs to: {2}'.format(self.summary,
-                                                                                                  self.info,
-                                                                                                  self.refuuid,
-                                                                                                  self.id)
+        return f'==> Annotation: {self.id}\n\tSummary: {self.summary}\n\tInformation {self.info}\n\tBelongs to: <{self.objuuid},{self.objcls}>'

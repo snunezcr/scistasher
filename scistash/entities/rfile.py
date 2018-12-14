@@ -11,7 +11,7 @@ from pathlib import Path
 
 class RefFile(Attachment):
 
-    def __init__(self, objid, path: Path, ftyp: str, desc: str, fsz=0, cnt=None):
+    def __init__(self, objid, objcls, path: Path, ftyp: str, desc: str, fsz=0, cnt=None):
         self.__fname = path.name
         self.__ftype = ftyp
         self.__desc = desc
@@ -19,11 +19,11 @@ class RefFile(Attachment):
         if cnt is None:
             # Creating from file
             self.__fsize = path.stat().st_size
-            super().__init__(objid, path.read_bytes())
+            super().__init__(objid, objcls, path.read_bytes())
         else:
             self.__fsize = fsz
             # Creating from db
-            super().__init__(objid, cnt)
+            super().__init__(objid, objcls, cnt)
 
     @property
     def fname(self):
@@ -59,13 +59,13 @@ class RefFile(Attachment):
         # TODO: the current limit in sqlite is 10^9 bytes (1 GB). Larger files require other DB managers
         #       (PostgreSQL's TOAST data type). This may be ideal if this software becomes implemented in the context
         #       of large research facilities, and is extended to include other objects beyond papers (e.g. sensor data).
-        return str(self.id) + str(self.objid) + self.__fname + self.__ftype + self.__desc + str(self.content)
+        return str(self.id) + str(self.objid) + self.objcls + self.__fname + self.__ftype + self.__desc + str(self.content)
 
     def __str__(self):
-        return super(Attachment, self).__str__() + \
-               '==> Reference file: {0}\n\tReferee: {1}\n\tName: {2}\n\tSize: {3}\n\tType: {4}\n\tDescription: {5}\n'.format(
+        return '==> Reference file: {0}\n\tReferee: <{1},{2}>\n\tName: {3}\n\tSize: {4}\n\tType: {5}\n\tDescription: {6}\n'.format(
                    self.id,
                    self.objid,
+                   self.objcls,
                    self.__fname,
                    str(self.__fsize),
                    self.__ftype,

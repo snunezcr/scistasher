@@ -75,7 +75,7 @@ class ReplHandler:
                 }
             },
             'authors': {
-                'new': 'auth_new',                  #DONE
+                'new': 'auth_new',                      # DONE
                 'checkout': 'auth_checkout',
                 'find': {
                     'uuid': 'auth_find_uuid',
@@ -105,6 +105,7 @@ class ReplHandler:
             'annotations': {
                 'new': 'annot_new',
                 'checkout': 'annot_checkout',
+                'delete': 'annot_delete',
                 'find': {
                     'annotkey': 'annot_find_annotkey',
                     'refkey': 'annot_find_refkey',
@@ -114,14 +115,29 @@ class ReplHandler:
                     'title': 'annot_find_title'
                 },
             },
+            'tags': {
+                'new': 'tags_new',
+                'show': 'tags_show',
+                'delete': 'tags_delete'
+            },
+            'files': {
+                'new': 'files_new',
+                'show': 'files_show',
+                'delete': 'files_delete'
+            },
+            'refs': {
+                'new': 'refs_new',
+                'show': 'refs_show',
+                'delete': 'refs_delete'
+            },
             'sdb': {
                 'list': {
-                    'authors': 'sdb_list_auths',    # DONE
-                    'articles': 'sdb_list_arts',    # DONE
+                    'authors': 'sdb_list_auths',        # DONE
+                    'articles': 'sdb_list_arts',        # DONE
                     'annots': 'sdb_list_annots',
-                    'tags': 'sdb_list_tags',        # DONE
-                    'files': 'sdb_list_files',      # DONE
-                    'refs': 'sdb_list_refs'         # DONE
+                    'tags': 'sdb_list_tags',            # DONE
+                    'files': 'sdb_list_files',          # DONE
+                    'refs': 'sdb_list_refs'             # DONE
                 },
                 'stats': 'sdb_stats',
                 'dump': {
@@ -213,7 +229,7 @@ class ReplHandler:
             # TODO
             pass
         elif user_input[0] == 'scratchall':
-            self.__pending.scratchall()
+            self.__pending.scratchall(self.__fetchhash)
         elif user_input[0] == 'top':
             self.__opstack = ['stash']
         elif user_input[0] == 'help':

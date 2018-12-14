@@ -10,8 +10,9 @@ import uuid
 
 class Attachment:
 
-    def __init__(self, objid: uuid.UUID, content):
+    def __init__(self, objid: uuid.UUID, objcls:str, content):
         self.__objid = objid
+        self.__objcls = objcls
         self.__content = content
         self.__id = str(uuid.uuid3(uuid.NAMESPACE_OID, self.stringify()))
 
@@ -22,6 +23,10 @@ class Attachment:
     @property
     def objid(self):
         return self.__objid
+
+    @property
+    def objcls(self):
+        return self.__objcls
 
     @property
     def content(self):

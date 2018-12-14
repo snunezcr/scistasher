@@ -11,11 +11,11 @@ import uuid
 
 class Reference(Attachment):
 
-    def __init__(self, objid, refkey: uuid.UUID):
-        super().__init__(objid, refkey)
+    def __init__(self, objid, objcls, refkey: uuid.UUID):
+        super().__init__(objid, objcls, refkey)
 
     def __str__(self):
-        return '==> Tag: {2}\n\t{0} {1}'.format(self.objid, self.content, self.id)
+        return '==> Tag: {3}\n\t<{0},{1}> {2}'.format(self.objid, self.objcls, self.content, self.id)
 
     def stringify(self):
-        return str(self.objid)+str(self.content)
+        return str(self.objid)+self.objcls+str(self.content)
