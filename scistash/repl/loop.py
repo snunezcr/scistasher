@@ -77,6 +77,7 @@ class ReplHandler:
             'authors': {
                 'new': 'auth_new',                      # DONE
                 'checkout': 'auth_checkout',
+                'delete': 'auth_delete',
                 'find': {
                     'uuid': 'auth_find_uuid',
                     'year': 'auth_find_year',
@@ -163,10 +164,11 @@ class ReplHandler:
         click.echo('For available commands, enter \'help\' into the REPL.\n')
         # Database handlers
         self.__pending = MemoryDBHandler(memquota)
-        self.__db = SQLiteHandler(db, dryrun, create, self.__pending)
+        self.__db = SQLiteHandler(db, dryrun, create)
         self.__createdb = create
         # Contextual and fetch hashes
         self.__fetchhash = self.__db.buildfetchhash()
+        self.__cntxhash = self.__db.buildcontexthash()
         # Operation stack handler
         self.__opstack = ['stash']
         # Prompt handler
@@ -311,13 +313,13 @@ class ReplHandler:
                 else:
                     self.__opstack += ctx
 
-    # Implementation of helper functions
-
     # Implementation of each command
     def dispatch(self, cmd, args):
         # Current
         if cmd == 'curr_id':
             self.__dispatch_curr_id(cmd, args)
+        elif cmd == 'curr_fetch':
+            self.__dispatch_curr_fetch(cmd, args)
         elif cmd == 'curr_show':
             self.__dispatch_curr_show(cmd, args)
         elif cmd == 'curr_scratch':
@@ -346,6 +348,16 @@ class ReplHandler:
             click.echo(click.style('No current working element has been set.', fg='magenta'))
         else:
             click.echo(click.style('ID of current working element:\t{0}'.format(self.current.id), fg='blue'))
+
+    def __dispatch_curr_fetch(self, cmd, args):
+        if self.current is None:
+            click.echo(click.style('No current working element has been set.', fg='magenta'))
+        elif not args:
+            # TODO
+            pass
+        else:
+            # TODO
+            pass
 
     def __dispatch_curr_show(self, cmd, args):
         if self.current is None:

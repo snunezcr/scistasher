@@ -231,11 +231,6 @@ class SQLiteHandler:
         Reference: __reftorow
     }
 
-    # TODO: generate functions that take objects and produce SQL statements to store data
-    __storeauthorSQLstring = ''
-
-    # TODO: generate functions that take objects and produce SQL statements to delete data
-
     # Type-to-table mapping
     __typetotablemap = {
         Author: 'authors',
@@ -330,12 +325,10 @@ class SQLiteHandler:
      )
      """
 
-    def __init__(self, db, dryrun, create, memdb: MemoryDBHandler):
+    def __init__(self, db, dryrun, create):
         self.__conn = None
         self.__cursor = None
         self.__dryrun = dryrun
-        # Needed to facilitate saving and fetching
-        self.__memdb = memdb
 
         if create:
             try:
@@ -387,7 +380,7 @@ class SQLiteHandler:
     # should be mirrored in the
 
     # TODO: this needs to be refactored properly
-    def __listrender(self, tuple, objtype):
+    def __listrendertuple(self, tuple, objtype):
         # Authors can be rendered easily
         if objtype == 'authors':
             iid, fn, ln = tuple
@@ -413,7 +406,7 @@ class SQLiteHandler:
                     _, _, auln = t
                     lnames.append(auln)
 
-            return '\t[{0}]\t{8}\t{1}. {2}. {3}. {4}({5}: {6}--{7})'.format(iid, yy, ' ,'.join(lnames),
+            return '\t{0}\t{8}\t{1}. {2}. {3}. {4}({5}: {6}--{7})'.format(iid, yy, ' ,'.join(lnames),
                                                                            tt, vm, nm, ps, pe, '!' if rt else ' ')
         # For annotations, retrieve a simplified version of the object
         elif objtype == 'annotations':
@@ -429,7 +422,7 @@ class SQLiteHandler:
                     return None
                 else:
                     fn, ln = data
-                    return '\t[{0}]\t\t{3}\t<{2},{1}>\t{5}, {4}'.format(iid, oid, cls, inf, fn, ln)
+                    return '\t{0}\t\t{3}\t<{2},{1}>\t{5}, {4}'.format(iid, oid, cls, inf, fn, ln)
             elif cls == 'article':
                 self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={oid}')
                 data = self.__cursor.fetchone()
@@ -440,7 +433,7 @@ class SQLiteHandler:
                     return None
                 else:
                     yy, tt, jj = data
-                    return '\t[{0}]\t\t{3}\t<{2},{1}>\t{4}.{5}.{6}. '.format(iid, oid, cls, inf, yy, tt, jj)
+                    return '\t{0}\t\t{3}\t<{2},{1}>\t{4}.{5}.{6}. '.format(iid, oid, cls, inf, yy, tt, jj)
             else:
                 return None
         # Tags
@@ -457,7 +450,7 @@ class SQLiteHandler:
                     return None
                 else:
                     fn, ln = data
-                    return '\t[{0}]\t\t{3}\t<{2},{1}>\t{5},{4}'.format(iid, oid, cls, cnt, fn, ln)
+                    return '\t{0}\t\t{3}\t<{2},{1}>\t{5},{4}'.format(iid, oid, cls, cnt, fn, ln)
             elif cls == 'article':
                 self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={oid}')
                 data = self.__cursor.fetchone()
@@ -467,7 +460,7 @@ class SQLiteHandler:
                     return None
                 else:
                     yy, tt, jj = data
-                    return '\t[{0}]\t\t{3}\t<{2},{1}>\t{4}.{5}.{6}. '.format(iid, oid, cls, cnt, yy, tt, jj)
+                    return '\t{0}\t\t{3}\t<{2},{1}>\t{4}.{5}.{6}. '.format(iid, oid, cls, cnt, yy, tt, jj)
             elif cls == 'annotations':
                 self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE id={oid}')
                 data = self.__cursor.fetchone()
@@ -477,7 +470,7 @@ class SQLiteHandler:
                     return None
                 else:
                     rid, roid, sm = data
-                    return '\t[{0}]\t\t{3}\t<{2},{1}>\t{4} <<{6},{5}>> '.format(iid, oid, cls, cnt, sm, rid, roid)
+                    return '\t{0}\t\t{3}\t<{2},{1}>\t{4} <<{6},{5}>> '.format(iid, oid, cls, cnt, sm, rid, roid)
             else:
                 return None
         # Files
@@ -493,7 +486,7 @@ class SQLiteHandler:
                     return None
                 else:
                     fn, ln = data
-                    return '\t[{0}]\t\t{3} [{4}, {8} bytes] {5}\t<{2},{1}>\t{7}, {6}'.format(iid, oid, cls, fnm,
+                    return '\t{0}\t\t{3} [{4}, {8} bytes] {5}\t<{2},{1}>\t{7}, {6}'.format(iid, oid, cls, fnm,
                                                                                   fty, dsc, fn, ln, fsz)
             elif cls == 'article':
                 self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={oid}')
@@ -505,7 +498,7 @@ class SQLiteHandler:
                     return None
                 else:
                     yy, tt, jj = data
-                    return '\t[{0}]\t\t{3} [{4}] {5}\t<{2},{1}>\t{6}.{7}.{8}.'.format(iid, oid, cls, fnm,
+                    return '\t{0}\t\t{3} [{4}] {5}\t<{2},{1}>\t{6}.{7}.{8}.'.format(iid, oid, cls, fnm,
                                                                                       fty, dsc, yy, tt, jj)
             elif cls == 'annotations':
                 self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE id={oid}')
@@ -516,7 +509,7 @@ class SQLiteHandler:
                     return None
                 else:
                     rid, roid, sm = data
-                    return '\t[{0}]\t\t{3} [{4}] {5}\t<{2},{1}>\t <<{6},{7}>>'.format(iid, oid, cls, fnm,
+                    return '\t{0}\t\t{3} [{4}] {5}\t<{2},{1}>\t <<{6},{7}>>'.format(iid, oid, cls, fnm,
                                                                                       fty, dsc, rid, roid)
             else:
                 return None
@@ -543,7 +536,7 @@ class SQLiteHandler:
                         return None
                     else:
                         fn, ln = data
-                        return '\t[{0}]\t\t<{2},{1}> {4}, {3} ----> [5] {6}.{7}.{8}.'.format(iid, oid, cls, fn, ln,
+                        return '\t{0}\t\t<{2},{1}> {4}, {3} ----> [5] {6}.{7}.{8}.'.format(iid, oid, cls, fn, ln,
                                                                                              rid, ryy, rtt, rjj)
                 elif cls == 'article':
                     self.__cursor.execute('SELECT year, title, journal FROM articles WHERE id={0}'.format(oid))
@@ -554,7 +547,7 @@ class SQLiteHandler:
                                                fg='red'))
                     else:
                         yy, tt, jj = data
-                        return '\t[{0}]\t\t<{2},{1}> {3}.{4}.{5}. ----> [6] {7}.{8}.{9}.'.format(iid, oid, cls, yy, tt,
+                        return '\t{0}\t\t<{2},{1}> {3}.{4}.{5}. ----> [6] {7}.{8}.{9}.'.format(iid, oid, cls, yy, tt,
                                                                                                  jj, rid, ryy, rtt, rjj)
                 elif cls == 'annotations':
                     self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE id={oid}')
@@ -564,7 +557,7 @@ class SQLiteHandler:
                         click.echo(click.style('[SQLite] Reference {0} belongs to no annotation.'.format(iid),fg='red'))
                     else:
                         rfid, rfobc, sm = data
-                        return '\t[{0}]\t\t<{2},{1}> {3} <<{5},{4}>> ----> [5] {6}.{7}.{8}.'.format(iid, oid, cls, sm,
+                        return '\t{0}\t\t<{2},{1}> {3} <<{5},{4}>> ----> [5] {6}.{7}.{8}.'.format(iid, oid, cls, sm,
                                                                                                     rfid, rfobc, ryy,
                                                                                                     rtt, rjj)
                 else:
@@ -589,7 +582,6 @@ class SQLiteHandler:
                 if objtable != 'files':
                     self.__cursor.execute(f'SELECT * FROM {objtable}')
                 else:
-                    click.echo(click.style("BEFORE FILE", bold=True, fg='yellow'))
                     self.__cursor.execute(f'SELECT uuid, objuuid, objclass, fname, ftype, descr, fsize FROM {objtable}')
 
                 rows = self.__cursor.fetchall()
@@ -598,7 +590,7 @@ class SQLiteHandler:
                 click.echo(click.style('[SQLite] Database contains no {0}.'.format(objtable), fg='magenta'))
                 return None
             else:
-                return '\n'.join(map(lambda x: self.__listrender(x, objtable), rows))
+                return '\n'.join(map(lambda x: self.__listrendertuple(x, objtable), rows))
 
     def exists_fetch(self, oid: uuid.UUID, otype):
         if not otype in self.__typetotablemap.keys():
@@ -607,7 +599,6 @@ class SQLiteHandler:
         else:
             self.__cursor.execute(f'SELECT uuid FROM {self.__typetotablemap[otype]} WHERE uuid={str(oid)}')
             return True if self.__cursor.fetchone() else False
-
 
     def exists(self, obj):
         if not self.__cursor:
@@ -638,28 +629,26 @@ class SQLiteHandler:
             return None
 
         otype = fhash[oid]
-        data = self.__memdb.checkout_fetch(oid, otype)
+        return self.fetch(oid, otype)
 
-        if not data:
-            data = self.fetch(oid, otype)
-
-        return data
-
-    def save(self, obj, prior: uuid.UUID):
+    def save(self, obj, prior: uuid.UUID, fhash: dict):
         if obj is None:
             click.echo(click.style('[SQLite] Cannot save null object.', fg='red'))
         elif obj.id == prior:
             click.echo(click.style('[SQLite] Ignoring saving for same object.', fg='magenta'))
         else:
-            if type(obj) is Author:
-                pass
-                #self.__conn.execute('INSERT OR IGNORE INTO authors')
+            if self.exists(obj):
+                click.echo(click.style('[SQLite] the object already exists.', fg='red'))
+            else:
+                self.__objecttoinsertfunction[type(obj)](obj, prior)
+                fhash[obj.id] = type(obj)
 
     def delete(self, did: uuid.UUID, fhash: dict):
         if did not in fhash.keys():
             click.echo(click.style('[FetchH] Object not present across the complete stash.', fg='magenta'))
         else:
             self.__objecttodeletefunction[fhash[did]](did)
+            fhash.pop(did, None)
 
     def buildfetchhash(self):
         click.echo('[SQLite] Attempting to construct a fetch hash...')
@@ -672,11 +661,30 @@ class SQLiteHandler:
 
             for table in list(self.__typetotablemap.values()):
                 self.__cursor.execute(f'SELECT DISTINCT uuid FROM {table}')
+
                 for t in self.__cursor.fetchall():
                     fhash[uuid.UUID(t)] = self.__tabletotypemapper[table]
 
             click.echo('[SQLite] Fetch hash constructed.')
             return fhash
 
-    # TODO: build context hash for object types to help users
-    # def buildcontexthash(self):
+    def buildcontexthash(self):
+        click.echo('[SQLite] Attempting to construct a context hash...')
+
+        if not self.__cursor:
+            click.echo(click.style('[SQLite] Database connection does not exist.', fg='red'))
+            return None
+        else:
+            chash = {}
+
+            for table in list(self.__typetotablemap.values()):
+                if table == 'files':
+                    self.__cursor.execute(f'SELECT uuid, objuuid, objclass, fname, ftype, descr, fsize FROM {table}')
+                else:
+                    self.__cursor.execute(f'SELECT * FROM {table}')
+
+                for t in self.__cursor.fetchall():
+                    chash[uuid.UUID(t[0])] = self.__listrendertuple(t, table)
+
+            click.echo('[SQLite] Context hash constructed.')
+            return chash
