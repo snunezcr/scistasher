@@ -65,7 +65,7 @@ class MemoryDBHandler:
 
             return None
 
-    def checkout_fetch(self, oid: uuid.UUID, otype):
+    def checkout_fetch(self, oid: uuid.UUID, otype, fhash: dict):
         if not self.exists_fetch(oid, otype):
             click.echo(click.style('[IMemDB] Object does not exist in memory.', fg='magenta'))
             return None
@@ -76,7 +76,7 @@ class MemoryDBHandler:
 
             if data:
                 # We only work with immutable data in memory
-                self.scratch_fetch(oid, otype)
+                self.scratch_fetch(oid, otype, fhash)
 
             return data
 
