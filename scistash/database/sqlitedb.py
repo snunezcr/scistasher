@@ -11,7 +11,6 @@ from scistash.entities.annotation import Annotation
 from scistash.entities.tag import Tag
 from scistash.entities.rfile import RefFile
 from scistash.entities.reference import Reference
-from scistash.database.memorydb import MemoryDBHandler
 from sqlite3 import Error
 import sqlite3
 import pathlib
@@ -20,237 +19,6 @@ import uuid
 
 
 class SQLiteHandler:
-    # Functions to convert from tuples to simple objects (no nesting)
-    # We define these first to have the function maps ready
-    @staticmethod
-    def __tupletoauthor(tp):
-        lid, fn, ln = tp
-        return Author(fn, ln)
-
-    @staticmethod
-    def __tupletoarticle(tp):
-        lid, rk, yy, tt, jj, vl, nm, ps, pe, rt = tp
-        return Article(rk, None, tt, yy, jj, vl, nm, (ps, pe), rt)
-
-    @staticmethod
-    def __tupletoannotation(tp):
-        lid, oid, ocls, sm, ifo = tp
-        return Annotation(oid, ocls, sm, ifo)
-
-    @staticmethod
-    def __tupletotag(tp):
-        lid, oid, ocls, cnt = tp
-        return Tag(oid, ocls, cnt)
-
-    # This includes the blob
-    # TODO: in future versions, depending on the size of objects, a total memory quota is needed as a macro parameter
-    @staticmethod
-    def __tupletofile(tp):
-        lid, oid, ocls, fn, ft, ds, fs, cn = tp
-        RefFile(oid, fn, ft, ds, fs, cn)
-
-    @staticmethod
-    def __tupletoref(tp):
-        lid, oid, ocls, rid = tp
-        Reference(oid, ocls, rid)
-
-    # Type-to-tuple-function mapping to recover from database
-    __typetupleobjfunction = {
-        Author: __tupletoauthor,
-        Article: __tupletoarticle,
-        Annotation: __tupletoannotation,
-        Tag: __tupletotag,
-        RefFile: __tupletofile,
-        Reference: __tupletoref
-    }
-
-    # Helper function to remove tags, files and references
-    def __deletedecorators(self, did: uuid.UUID):
-        self.__cursor.execute(f'DELETE FROM tags WHERE objuuid={did}')
-        self.__cursor.execute(f'DELETE FROM files WHERE objuuid={did}')
-        self.__cursor.execute(f'DELETE FROM refs WHERE objuuid={did}')
-
-    def __deleteauthor(self, did: uuid.UUID):
-        if did is None:
-            click.echo(click.style('[SQLite] Cannot delete null author id.', fg='red'))
-        else:
-            if not self.exists_fetch(did, Author):
-                click.echo(click.style(f'[SQLite] Author { did } does not exist.', fg='magenta'))
-            else:
-                if click.confirm('Do you wish to delete referenced objects for this author? ', default=False):
-                    # Find all annotations and delete their decorators
-                    self.__cursor.execute(f'SELECT uuid FROM annotations WHERE objuuid={did}')
-                    annots = self.__cursor.fetchall()
-                    # This takes care of all decorators with first degree of indirection
-                    for aid in annots:
-                        self.__deletedecorators(aid)
-                    # Delete all the author's decorators
-                    self.__deletedecorators(did)
-                    # Delete the author-article association
-
-                if click.confirm('Do you wish to remove the association to existing articles?', default=False):
-                    self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE authuuid={did}')
-
-                # Finally, delete the author
-                self.__cursor.execute(f'DELETE FROM authors where uuid={did}')
-
-    def __deletearticle(self, did: uuid.UUID):
-        if did is None:
-            click.echo(click.style('[SQLite] Cannot delete null article id.', fg='red'))
-        else:
-            if not self.exists_fetch(did, Article):
-                click.echo(click.style(f'[SQLite] Article { did } does not exist.', fg='magenta'))
-            else:
-                if click.confirm('Do you wish to delete referenced objects for this article? ', default=False):
-                    # Find all annotations and delete their decorators
-                    self.__cursor.execute(f'SELECT uuid FROM annotations WHERE objuuid={did}')
-                    annots = self.__cursor.fetchall()
-                    # This takes care of all decorators with first degree of indirection
-                    for aid in annots:
-                        self.__deletedecorators(aid)
-                    # We also need to take care of refuuids in references
-                    self.__cursor.execute(f'DELETE FROM refs WHERE refuuid={did}')
-                    # Delete all the author's decorators
-                    self.__deletedecorators(did)
-                    # Delete the author-article association
-
-                if click.confirm('Do you wish to remove the association to existing authors?', default=False):
-                    self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE artuuid={did}')
-
-                # Finally, delete the author
-                self.__cursor.execute(f'DELETE FROM articles where uuid={did}')
-
-    def __deleteannotation(self, did: uuid.UUID):
-        if did is None:
-            click.echo(click.style('[SQLite] Cannot delete null annotation id.', fg='red'))
-        else:
-            if not self.exists_fetch(did, Annotation):
-                click.echo(click.style(f'[SQLite] Annotation { did } does not exist.', fg='magenta'))
-            else:
-                if click.confirm('Do you wish to delete referenced objects for this annotation? ', default=False):
-                    self.__deletedecorators(did)
-                    # Delete the author-article association
-
-                # Finally, delete the annotation
-                self.__cursor.execute(f'DELETE FROM annotations where uuid={did}')
-
-    def __deletetag(self, did: uuid.UUID=None):
-        if did is None:
-            click.echo(click.style('[SQLite] Cannot delete null tag id.', fg='red'))
-        else:
-            self.__cursor.execute(f'DELETE FROM tags WHERE uuid={did}')
-
-    def __deletefile(self, did: uuid.UUID=None):
-        if id is None:
-            click.echo(click.style('[SQLite] Cannot delete null file id.', fg='red'))
-        else:
-            self.__cursor.execute(f'DELETE FROM files WHERE uuid={did}')
-
-    def __deleteref(self, did: uuid.UUID=None):
-        if id is None:
-            click.echo(click.style('[SQLite] Cannot delete null reference id.', fg='red'))
-        else:
-            self.__cursor.execute(f'DELETE FROM refs WHERE uuid={did}')
-
-    # Type-to-insert from object to database
-    __objecttodeletefunction = {
-        Author: __deleteauthor,
-        Article: __deletearticle,
-        Annotation: __deleteannotation,
-        Tag: __deletetag,
-        RefFile: __deletefile,
-        Reference: __deleteref
-    }
-
-    # We use these functions to both create or edit database records
-    def __authortorow(self, obj: Author, prior: uuid.UUID=None):
-        if prior is not None:
-            # Delete the prior id before modification, insert the new one
-            self.__objecttodeletefunction[Author](prior)
-            # Update existing annotations and decorators
-            self.__cursor.execute(f'UPDATE annotations SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE tags SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE files SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE refs SET objid={obj.id} WHERE objid={prior}')
-
-
-        # Only insert the new row
-        self.__cursor.execute(f'INSERT INTO authors ({obj.id}, {obj.firstname}, {obj.lastname})')
-
-    def __articletorow(self, obj: Article, prior: uuid.UUID = None):
-        if prior is not None:
-            # Delete the prior id before modification, including author-article ties, insert the new one
-            self.__objecttodeletefunction[Article](prior)
-            self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE artuuid={prior}')
-            # Update existing annotations and decorators
-            self.__cursor.execute(f'UPDATE annotations SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE tags SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE files SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE refs SET objid={obj.id} WHERE objid={prior}')
-
-        # Insert one row per article
-        self.__cursor.execute(f'INSERT INTO articles ({obj.id}, {obj.refkey}, {obj.title}, {obj.journal}, ' +
-                              f'{obj.volume}, {obj.number}, {obj.pages[0]}, {obj.pages[1]}, {obj.retracted})')
-
-        # Insert authors and update article-authors references if new
-        for auth in obj.authors:
-            if not self.exists(auth):
-                self.__authortorow(auth)
-            self.__cursor.execute(f'INSERT INTO authorsperarticle ({obj.id}, {auth.id})')
-
-    def __annotationtorow(self, obj: Annotation, prior: uuid.UUID = None):
-        if prior is not None:
-            # Delete the prior id before modification, including annotation-object ties, insert the new one
-            self.__objecttodeletefunction[Annotation](prior)
-            self.__cursor.execute(f'DELETE FROM annotations WHERE artuuid={prior}')
-            # Update existing decorators
-            self.__cursor.execute(f'UPDATE tags SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE files SET objid={obj.id} WHERE objid={prior}')
-            self.__cursor.execute(f'UPDATE refs SET objid={obj.id} WHERE objid={prior}')
-
-
-        # Insert one row per annotation
-        self.__cursor.execute(f'INSERT INTO annotations ({obj.id}, {obj.objuuid}, {obj.objcls}, {obj.summary}, {obj.info})')
-
-    def __tagtorow(self, obj: Tag, prior = None):
-        self.__cursor.execute(f'INSERT INTO tags ({obj.id}, {obj.objid}, {obj.objcls}, {obj.content})')
-
-    def __filetorow(self, obj: RefFile, prior = None):
-        self.__cursor.execute(f'INSERT INTO tags ({obj.id}, {obj.objid}, {obj.objcls}, {obj.fname}, {obj.ftype}, {obj.desc}, {obj.desc}, {obj.fsize}, {sqlite3.Binary(obj.content)})')
-
-    def __reftorow(self, obj: Reference, prior = None):
-        self.__cursor.execute(f'INSERT INTO refs ({obj.id}, {obj.objid}, {obj.objcls}, {obj.content})')
-
-    # Type-to-insert from object to database
-    __objecttoinsertfunction = {
-        Author: __authortorow,
-        Article: __articletorow,
-        Annotation: __annotationtorow,
-        Tag: __tagtorow,
-        RefFile: __filetorow,
-        Reference: __reftorow
-    }
-
-    # Type-to-table mapping
-    __typetotablemap = {
-        Author: 'authors',
-        Article: 'articles',
-        Annotation: 'annotations',
-        Tag: 'tags',
-        RefFile: 'files',
-        Reference: 'refs'
-    }
-
-    # Table-to-type mapping (no elegant and efficient way to obtain from Python's dictionary
-    __tabletotypemapper = {
-        'authors': Author,
-        'articles': Article,
-        'annotations': Annotation,
-        'tags': Tag,
-        'files': RefFile,
-        'refs': Reference
-    }
-
     # SQL statements for all tables
     # Given that we will take care of all operations, foreign keys have been forgone. This may not be the best
     # practice, but preserves generality.
@@ -374,6 +142,224 @@ class SQLiteHandler:
             self.__conn.commit()
             self.__conn.close()
 
+    # Functions to convert from tuples to simple objects (no nesting)
+    # We define these first to have the function maps ready
+    @staticmethod
+    def __tupletoauthor(tp):
+        lid, fn, ln = tp
+        return Author(fn, ln)
+
+    @staticmethod
+    def __tupletoarticle(tp):
+        lid, rk, yy, tt, jj, vl, nm, ps, pe, rt = tp
+        return Article(rk, None, tt, yy, jj, vl, nm, (ps, pe), rt)
+
+    @staticmethod
+    def __tupletoannotation(tp):
+        lid, oid, ocls, sm, ifo = tp
+        return Annotation(oid, ocls, sm, ifo)
+
+    @staticmethod
+    def __tupletotag(tp):
+        lid, oid, ocls, cnt = tp
+        return Tag(oid, ocls, cnt)
+
+    # This includes the blob
+    # TODO: in future versions, depending on the size of objects, a total memory quota is needed as a macro parameter
+    @staticmethod
+    def __tupletofile(tp):
+        lid, oid, ocls, fn, ft, ds, fs, cn = tp
+        return RefFile(oid, fn, ft, ds, fs, cn)
+
+    @staticmethod
+    def __tupletoref(tp):
+        lid, oid, ocls, rid = tp
+        return Reference(oid, ocls, rid)
+
+    # Helper function to remove tags, files and references
+    def __deletedecorators(self, did: uuid.UUID, fhash: dict):
+        # Remove decorators from the dictionary
+        for table in ['tags', 'files', 'refs']:
+            self.__cursor.execute(f'SELECT uuid FROM {table} WHERE objuuid=\"{did}\"')
+            for t in self.__cursor.fetchall():
+                fhash.pop(uuid.UUID(t), None)
+
+            self.__cursor.execute(f'DELETE FROM {table} WHERE objuuid=\"{did}\"')
+
+    def __deleteauthor(self, did: uuid.UUID, fhash: dict):
+        if did is None:
+            click.echo(click.style('[SQLite] Cannot delete null author id.', fg='red'))
+        else:
+            if not self.exists_fetch(did, Author):
+                click.echo(click.style(f'[SQLite] Author { did } does not exist.', fg='magenta'))
+            else:
+                if click.confirm('Do you wish to delete referenced objects for this author? ', default=False):
+                    # Find all annotations and delete their decorators
+                    self.__cursor.execute(f'SELECT uuid FROM annotations WHERE objuuid=\"{did}\"')
+                    annots = self.__cursor.fetchall()
+                    # This takes care of all decorators with first degree of indirection
+                    for aid in annots:
+                        self.__deletedecorators(aid, fhash)
+                    # Delete all the author's decorators
+                    self.__deletedecorators(did, fhash)
+                    # Delete the author-article association
+
+                if click.confirm('Do you wish to remove the association to existing articles?', default=False):
+                    self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE authuuid=\"{did}\"')
+
+                # Finally, delete the author
+                self.__cursor.execute(f'DELETE FROM authors where uuid=\"{did}\"')
+                fhash.pop(did, None)
+
+    def __deletearticle(self, did: uuid.UUID, fhash: dict):
+        if did is None:
+            click.echo(click.style('[SQLite] Cannot delete null article id.', fg='red'))
+        else:
+            if not self.exists_fetch(did, Article):
+                click.echo(click.style(f'[SQLite] Article { did } does not exist.', fg='magenta'))
+            else:
+                if click.confirm('Do you wish to delete referenced objects for this article? ', default=False):
+                    # Find all annotations and delete their decorators
+                    self.__cursor.execute(f'SELECT uuid FROM annotations WHERE objuuid=\"{did}\"')
+                    annots = self.__cursor.fetchall()
+                    # This takes care of all decorators with first degree of indirection
+                    for aid in annots:
+                        self.__deletedecorators(aid, fhash)
+                    # We also need to take care of refuuids in references
+                    self.__cursor.execute(f'DELETE FROM refs WHERE refuuid=\"{did}\"')
+                    # Delete all the author's decorators
+                    self.__deletedecorators(did, fhash)
+                    # Delete the author-article association
+
+                if click.confirm('Do you wish to remove the association to existing authors?', default=False):
+                    self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE artuuid=\"{did}\"')
+
+                # Finally, delete the article
+                self.__cursor.execute(f'DELETE FROM articles where uuid=\"{did}\"')
+                fhash.pop(did, None)
+
+    def __deleteannotation(self, did: uuid.UUID, fhash: dict):
+        if did is None:
+            click.echo(click.style('[SQLite] Cannot delete null annotation id.', fg='red'))
+        else:
+            if not self.exists_fetch(did, Annotation):
+                click.echo(click.style(f'[SQLite] Annotation { did } does not exist.', fg='magenta'))
+            else:
+                if click.confirm('Do you wish to delete referenced objects for this annotation? ', default=False):
+                    self.__deletedecorators(did, fhash)
+                    # Delete the author-article association
+
+                # Finally, delete the annotation
+                self.__cursor.execute(f'DELETE FROM annotations where uuid=\"{did}"')
+                fhash.pop(did, None)
+
+    def __deletetag(self, did: uuid.UUID, fhash: dict):
+        if did is None:
+            click.echo(click.style('[SQLite] Cannot delete null tag id.', fg='red'))
+        else:
+            self.__cursor.execute(f'DELETE FROM tags WHERE uuid=\"{did}\"')
+            fhash.pop(did, None)
+
+    def __deletefile(self, did: uuid.UUID, fhash: dict):
+        if id is None:
+            click.echo(click.style('[SQLite] Cannot delete null file id.', fg='red'))
+        else:
+            self.__cursor.execute(f'DELETE FROM files WHERE uuid=\"{did}\"')
+            fhash.pop(did, None)
+
+    def __deleteref(self, did: uuid.UUID, fhash: dict):
+        if id is None:
+            click.echo(click.style('[SQLite] Cannot delete null reference id.', fg='red'))
+        else:
+            self.__cursor.execute(f'DELETE FROM refs WHERE uuid=\"{did}\"')
+            fhash.pop(did, None)
+
+    # We use these functions to both create or edit database records
+    def __authortorow(self, obj: Author, prior: uuid.UUID, fhash: dict):
+        if prior is not None:
+            # Delete the prior id before modification, insert the new one
+            self.__deleteinternal(prior, Author, fhash)
+            # Update existing annotations and decorators
+            # Todo: this breaks the consistency element of ids. Need to check later.
+            self.__cursor.execute(f'UPDATE annotations SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+
+        self.__cursor.execute(f'INSERT INTO authors VALUES (\"{obj.id}\", \"{obj.firstname}\", \"{obj.lastname}\")')
+        fhash[obj.id] = Author
+
+    def __articletorow(self, obj: Article, prior: uuid.UUID, fhash: dict):
+        if prior is not None:
+            # Delete the prior id before modification, including author-article ties, insert the new one
+            self.__deleteinternal(prior, Article, fhash)
+            self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE artuuid=\"{prior}\"')
+            # Update existing annotations and decorators
+            self.__cursor.execute(f'UPDATE annotations SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+
+        # Insert one row per article
+        self.__cursor.execute(
+            f'INSERT INTO articles VALUES (\"{obj.id}\", \"{obj.refkey}\", \"{obj.title}\", \"{obj.journal}\", {obj.volume}, {obj.number}, {obj.pages[0]}, {obj.pages[1]}, {obj.retracted})')
+        fhash[obj.id] = Article
+
+        # Insert authors and update article-authors references if new
+        for auth in obj.authors:
+            if not self.exists(auth):
+                self.__authortorow(auth, fhash)
+            self.__cursor.execute(f'INSERT INTO authorsperarticle VALUES (\"{obj.id}\", \"{auth.id})\"')
+
+    def __annotationtorow(self, obj: Annotation, prior: uuid.UUID, fhash: dict):
+        if prior is not None:
+            # Delete the prior id before modification, including annotation-object ties, insert the new one
+            self.__deleteinternal(prior, Annotation, fhash)
+            self.__cursor.execute(f'DELETE FROM annotations WHERE artuuid=\"{prior}\"')
+            # Update existing decorators
+            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+
+        # Insert one row per annotation
+        self.__cursor.execute(
+            f'INSERT INTO annotations VALUES (\"{obj.id}\", \"{obj.objuuid}\", {obj.objcls}, \"{obj.summary}\", \"{obj.info}\")')
+        fhash[obj.id] = Annotation
+
+    def __tagtorow(self, obj: Tag, prior, fhash: dict):
+        self.__cursor.execute(
+            f'INSERT INTO tags VALUES (\"{obj.id}\", \"{obj.objid}\", {obj.objcls}, \"{obj.content}\")')
+        fhash[obj.id] = Tag
+
+    def __filetorow(self, obj: RefFile, prior, fhash: dict):
+        self.__cursor.execute(
+            f'INSERT INTO tags VALUES (\"{obj.id}\", \"{obj.objid}\", \"{obj.objcls}\", \"{obj.fname}\", \"{obj.ftype}\", \"{obj.desc}\", \"{obj.desc}\", {obj.fsize}, {sqlite3.Binary(obj.content)})')
+        fhash[obj.id] = RefFile
+
+    def __reftorow(self, obj: Reference, prior, fhash: dict):
+        self.__cursor.execute(f'INSERT INTO refs VALUES ({obj.id}, {obj.objid}, {obj.objcls}, {obj.content})')
+        fhash[obj.id] = Reference
+
+    # Type-to-table mapping
+    __typetotablemap = {
+        Author: 'authors',
+        Article: 'articles',
+        Annotation: 'annotations',
+        Tag: 'tags',
+        RefFile: 'files',
+        Reference: 'refs'
+    }
+
+    # Table-to-type mapping (no elegant and efficient way to obtain from Python's dictionary
+    __tabletotypemapper = {
+        'authors': Author,
+        'articles': Article,
+        'annotations': Annotation,
+        'tags': Tag,
+        'files': RefFile,
+        'refs': Reference
+    }
+
     # Data management commands
     #
     # All commands here are constructive blocks later to be used by the dispatch function. Almost all operations
@@ -384,7 +370,7 @@ class SQLiteHandler:
         # Authors can be rendered easily
         if objtype == 'authors':
             iid, fn, ln = tuple
-            return '\t[{0}]\t\t{2}, {1}'.format(iid, fn, ln)
+            return '\t{0}\t\t{2}, {1}'.format(iid, fn, ln)
         # For an article tuple, find all authors. If no authors exist, raise error. Otherwise, list last names.
         elif objtype == 'articles':
             iid, rk, yy, tt, jn, vm, nm, ps, pe, rt = tuple
@@ -407,13 +393,13 @@ class SQLiteHandler:
                     lnames.append(auln)
 
             return '\t{0}\t{8}\t{1}. {2}. {3}. {4}({5}: {6}--{7})'.format(iid, yy, ' ,'.join(lnames),
-                                                                           tt, vm, nm, ps, pe, '!' if rt else ' ')
+                                                                          tt, vm, nm, ps, pe, '!' if rt else ' ')
         # For annotations, retrieve a simplified version of the object
         elif objtype == 'annotations':
             iid, oid, cls, inf = tuple
 
             if cls == 'author':
-                self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE id={oid}')
+                self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -424,7 +410,7 @@ class SQLiteHandler:
                     fn, ln = data
                     return '\t{0}\t\t{3}\t<{2},{1}>\t{5}, {4}'.format(iid, oid, cls, inf, fn, ln)
             elif cls == 'article':
-                self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={oid}')
+                self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -441,7 +427,7 @@ class SQLiteHandler:
             iid, oid, cls, cnt = tuple
 
             if cls == 'author':
-                self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE id={oid}')
+                self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -452,7 +438,7 @@ class SQLiteHandler:
                     fn, ln = data
                     return '\t{0}\t\t{3}\t<{2},{1}>\t{5},{4}'.format(iid, oid, cls, cnt, fn, ln)
             elif cls == 'article':
-                self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={oid}')
+                self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -462,11 +448,11 @@ class SQLiteHandler:
                     yy, tt, jj = data
                     return '\t{0}\t\t{3}\t<{2},{1}>\t{4}.{5}.{6}. '.format(iid, oid, cls, cnt, yy, tt, jj)
             elif cls == 'annotations':
-                self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE id={oid}')
+                self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
-                    click.echo(click.style('[SQLite] Tag {0} belongs to no annotation.'.format(iid),fg='red'))
+                    click.echo(click.style('[SQLite] Tag {0} belongs to no annotation.'.format(iid), fg='red'))
                     return None
                 else:
                     rid, roid, sm = data
@@ -478,7 +464,7 @@ class SQLiteHandler:
             iid, oid, cls, fnm, fty, dsc, fsz = tuple
 
             if cls == 'author':
-                self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE id={oid}')
+                self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -487,9 +473,9 @@ class SQLiteHandler:
                 else:
                     fn, ln = data
                     return '\t{0}\t\t{3} [{4}, {8} bytes] {5}\t<{2},{1}>\t{7}, {6}'.format(iid, oid, cls, fnm,
-                                                                                  fty, dsc, fn, ln, fsz)
+                                                                                           fty, dsc, fn, ln, fsz)
             elif cls == 'article':
-                self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={oid}')
+                self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -499,9 +485,9 @@ class SQLiteHandler:
                 else:
                     yy, tt, jj = data
                     return '\t{0}\t\t{3} [{4}] {5}\t<{2},{1}>\t{6}.{7}.{8}.'.format(iid, oid, cls, fnm,
-                                                                                      fty, dsc, yy, tt, jj)
+                                                                                    fty, dsc, yy, tt, jj)
             elif cls == 'annotations':
-                self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE id={oid}')
+                self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE uuid=\"{oid}\"')
                 data = self.__cursor.fetchone()
 
                 if not data:
@@ -510,7 +496,7 @@ class SQLiteHandler:
                 else:
                     rid, roid, sm = data
                     return '\t{0}\t\t{3} [{4}] {5}\t<{2},{1}>\t <<{6},{7}>>'.format(iid, oid, cls, fnm,
-                                                                                      fty, dsc, rid, roid)
+                                                                                    fty, dsc, rid, roid)
             else:
                 return None
         # References
@@ -527,7 +513,7 @@ class SQLiteHandler:
                 ryy, rtt, rjj = rdata
 
                 if cls == 'author':
-                    self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE id={oid}')
+                    self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
                     data = self.__cursor.fetchone()
 
                     if not data:
@@ -537,7 +523,7 @@ class SQLiteHandler:
                     else:
                         fn, ln = data
                         return '\t{0}\t\t<{2},{1}> {4}, {3} ----> [5] {6}.{7}.{8}.'.format(iid, oid, cls, fn, ln,
-                                                                                             rid, ryy, rtt, rjj)
+                                                                                           rid, ryy, rtt, rjj)
                 elif cls == 'article':
                     self.__cursor.execute('SELECT year, title, journal FROM articles WHERE id={0}'.format(oid))
                     data = self.__cursor.fetchone()
@@ -548,18 +534,19 @@ class SQLiteHandler:
                     else:
                         yy, tt, jj = data
                         return '\t{0}\t\t<{2},{1}> {3}.{4}.{5}. ----> [6] {7}.{8}.{9}.'.format(iid, oid, cls, yy, tt,
-                                                                                                 jj, rid, ryy, rtt, rjj)
+                                                                                               jj, rid, ryy, rtt, rjj)
                 elif cls == 'annotations':
-                    self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE id={oid}')
+                    self.__cursor.execute(f'SELECT objuuid, objclass, summary FROM annotations WHERE uuid=\"{oid}\"')
                     data = self.__cursor.fetchone()
 
                     if not data:
-                        click.echo(click.style('[SQLite] Reference {0} belongs to no annotation.'.format(iid),fg='red'))
+                        click.echo(
+                            click.style('[SQLite] Reference {0} belongs to no annotation.'.format(iid), fg='red'))
                     else:
                         rfid, rfobc, sm = data
                         return '\t{0}\t\t<{2},{1}> {3} <<{5},{4}>> ----> [5] {6}.{7}.{8}.'.format(iid, oid, cls, sm,
-                                                                                                    rfid, rfobc, ryy,
-                                                                                                    rtt, rjj)
+                                                                                                  rfid, rfobc, ryy,
+                                                                                                  rtt, rjj)
                 else:
                     return None
         else:
@@ -593,11 +580,11 @@ class SQLiteHandler:
                 return '\n'.join(map(lambda x: self.__listrendertuple(x, objtable), rows))
 
     def exists_fetch(self, oid: uuid.UUID, otype):
-        if not otype in self.__typetotablemap.keys():
+        if otype not in self.__typetotablemap.keys():
             click.echo(click.style('[SQLite] Unknown object type.', fg='red'))
             return False
         else:
-            self.__cursor.execute(f'SELECT uuid FROM {self.__typetotablemap[otype]} WHERE uuid={str(oid)}')
+            self.__cursor.execute(f'SELECT uuid FROM {self.__typetotablemap[otype]} WHERE uuid=\"{oid}\"')
             return True if self.__cursor.fetchone() else False
 
     def exists(self, obj):
@@ -619,7 +606,15 @@ class SQLiteHandler:
             data = self.__cursor.fetchone()
 
             if data:
-                return self.__typetupleobjfunction[otype](data)
+                typetupleobjfunction = {
+                    Author: self.__tupletoauthor,
+                    Article: self.__tupletoarticle,
+                    Annotation: self.__tupletoannotation,
+                    Tag: self.__tupletotag,
+                    RefFile: self.__tupletofile,
+                    Reference: self.__tupletoref
+                }
+                return typetupleobjfunction[otype](data)
             else:
                 return None
 
@@ -640,15 +635,34 @@ class SQLiteHandler:
             if self.exists(obj):
                 click.echo(click.style('[SQLite] the object already exists.', fg='red'))
             else:
-                self.__objecttoinsertfunction[type(obj)](obj, prior)
-                fhash[obj.id] = type(obj)
+                objecttoinsertfunction = {
+                    Author: self.__authortorow,
+                    Article: self.__articletorow,
+                    Annotation: self.__annotationtorow,
+                    Tag: self.__tagtorow,
+                    RefFile: self.__filetorow,
+                    Reference: self.__reftorow
+                }
+                objecttoinsertfunction[type(obj)](obj, prior, fhash)
+
+    def __deleteinternal(self, did: uuid.UUID, objtype: type, fhash: dict):
+        objecttodeletefunction = {
+            Author: self.__deleteauthor,
+            Article: self.__deletearticle,
+            Annotation: self.__deleteannotation,
+            Tag: self.__deletetag,
+            RefFile: self.__deletefile,
+            Reference: self.__deleteref
+        }
+
+        objecttodeletefunction[objtype](did, fhash)
 
     def delete(self, did: uuid.UUID, fhash: dict):
         if did not in fhash.keys():
             click.echo(click.style('[FetchH] Object not present across the complete stash.', fg='magenta'))
         else:
-            self.__objecttodeletefunction[fhash[did]](did)
-            fhash.pop(did, None)
+            # Type-to-insert from object to database
+            self.__deleteinternal(did, fhash[did], fhash)
 
     def buildfetchhash(self):
         click.echo('[SQLite] Attempting to construct a fetch hash...')
@@ -663,7 +677,7 @@ class SQLiteHandler:
                 self.__cursor.execute(f'SELECT DISTINCT uuid FROM {table}')
 
                 for t in self.__cursor.fetchall():
-                    fhash[uuid.UUID(t)] = self.__tabletotypemapper[table]
+                    fhash[uuid.UUID(t[0])] = self.__tabletotypemapper[table]
 
             click.echo('[SQLite] Fetch hash constructed.')
             return fhash

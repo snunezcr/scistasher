@@ -16,6 +16,7 @@ from scistash.entities.author import Author
 from scistash.entities.article import Article
 from scistash.entities.annotation import Annotation
 import click
+import uuid
 
 
 class StashCompleter(Completer):
@@ -37,9 +38,9 @@ class ReplHandler:
         'stash': {
             'current': {
                 'id': 'curr_id',                        # DONE
-                'fetch': 'curr_fetch',
+                'fetch': 'curr_fetch',                  # DONE
                 'show': 'curr_show',                    # DONE
-                'save': 'curr_save',
+                'save': 'curr_save',                    # DONE
                 'scratch': 'curr_scratch',              # DONE
                 'edit': 'curr_edit',
                 'tag': {
@@ -176,6 +177,7 @@ class ReplHandler:
         self.__scomp.setvocab(self.levels.get('stash').keys())
         self.__currprompt = ''
         self.__current = None
+        self.__prioruuid = None
 
     @property
     def db(self):
@@ -317,49 +319,56 @@ class ReplHandler:
     def dispatch(self, cmd, args):
         # Current
         if cmd == 'curr_id':
-            self.__dispatch_curr_id(cmd, args)
+            self.__dispatch_curr_id(args)
         elif cmd == 'curr_fetch':
-            self.__dispatch_curr_fetch(cmd, args)
+            self.__dispatch_curr_fetch(args)
         elif cmd == 'curr_show':
-            self.__dispatch_curr_show(cmd, args)
+            self.__dispatch_curr_show(args)
+        elif cmd == 'curr_save':
+            self.__dispatch_curr_save(args)
         elif cmd == 'curr_scratch':
-            self.__dispatch_curr_scratch(cmd, args)
+            self.__dispatch_curr_scratch(args)
         # Authors
         elif cmd == 'auth_new':
-            self.__dispatch_auth_new(cmd, args)
+            self.__dispatch_auth_new(args)
         # Sdb
         elif cmd == 'sdb_list_auths':
-            self.__dispatch_sdb_list_auths(cmd, args)
+            self.__dispatch_sdb_list_auths(args)
         elif cmd == 'sdb_list_arts':
-            self.__dispatch_sdb_list_arts(cmd, args)
+            self.__dispatch_sdb_list_arts(args)
         elif cmd == 'sdb_list_annots':
-            self.__dispatch_sdb_list_annots(cmd, args)
+            self.__dispatch_sdb_list_annots(args)
         elif cmd == 'sdb_list_tags':
-            self.__dispatch_sdb_list_tags(cmd, args)
+            self.__dispatch_sdb_list_tags(args)
         elif cmd == 'sdb_list_files':
-            self.__dispatch_sdb_list_files(cmd, args)
+            self.__dispatch_sdb_list_files(args)
         elif cmd == 'sdb_list_refs':
-            self.__dispatch_sdb_list_refs(cmd, args)
+            self.__dispatch_sdb_list_refs(args)
         else:
             pass
 
-    def __dispatch_curr_id(self, cmd, args):
+    def __dispatch_curr_id(self, args):
         if self.current is None:
             click.echo(click.style('No current working element has been set.', fg='magenta'))
         else:
             click.echo(click.style('ID of current working element:\t{0}'.format(self.current.id), fg='blue'))
 
-    def __dispatch_curr_fetch(self, cmd, args):
-        if self.current is None:
-            click.echo(click.style('No current working element has been set.', fg='magenta'))
-        elif not args:
-            # TODO
-            pass
-        else:
-            # TODO
-            pass
+    def __dispatch_curr_fetch(self, args: list):
+        if not args:
+            user_input = prompt('Entity identifier: ',
+                                completer=self.__cntxhash.values())
+            args.append(user_input.split()[0])
 
-    def __dispatch_curr_show(self, cmd, args):
+        try:
+            obj = self.__db.fetch(uuid.UUID(args[0]), self.__fetchhash[uuid.UUID(args[0])])
+        except Exception as e:
+            click.echo(click.style('Malformed uuid ({0}).'.format(e), fg='red'))
+            obj = None
+
+        if obj is not None:
+            self.current = obj
+
+    def __dispatch_curr_show(self, args):
         if self.current is None:
             click.echo(click.style('No current working element has been set.', fg='magenta'))
         else:
@@ -374,11 +383,19 @@ class ReplHandler:
 
             click.echo(click.style('Current: {}\n'.format(currtype), fg='blue') + str(self.current))
 
-    def __dispatch_curr_scratch(self, cmd, args):
+    def __dispatch_curr_save(self, args):
+        if self.current is not None:
+            # Saving takes care of the fetch hash per object type
+            self.__db.save(self.current, self.__prioruuid, self.__fetchhash)
+            self.current = None
+        else:
+            click.echo(click.style('No current working element has been set.', fg='magenta'))
+
+    def __dispatch_curr_scratch(self, args):
         if self.current is not None:
             self.current = None
 
-    def __dispatch_auth_new(self, cmd, args):
+    def __dispatch_auth_new(self, args):
         if args:
             auth = Author(args[0], args[1])
             self.current = auth
@@ -390,37 +407,37 @@ class ReplHandler:
             self.current = auth
             click.echo(click.style('New author created.', fg='blue'))
 
-    def __dispatch_sdb_list_auths(self, cmd, args):
+    def __dispatch_sdb_list_auths(self, args):
         outcome = self.__db.list('authors')
 
         if outcome is not None:
             click.echo_via_pager(outcome)
 
-    def __dispatch_sdb_list_arts(self, cmd, args):
+    def __dispatch_sdb_list_arts(self, args):
         outcome = self.__db.list('articles')
 
         if outcome is not None:
             click.echo_via_pager(outcome)
 
-    def __dispatch_sdb_list_annots(self, cmd, args):
+    def __dispatch_sdb_list_annots(self, args):
         outcome = self.__db.list('annotations')
 
         if outcome is not None:
             click.echo_via_pager(outcome)
 
-    def __dispatch_sdb_list_tags(self, cmd, args):
+    def __dispatch_sdb_list_tags(self, args):
         outcome = self.__db.list('tags')
 
         if outcome is not None:
             click.echo_via_pager(outcome)
 
-    def __dispatch_sdb_list_files(self, cmd, args):
+    def __dispatch_sdb_list_files(self, args):
         outcome = self.__db.list('files')
 
         if outcome is not None:
             click.echo_via_pager(outcome)
 
-    def __dispatch_sdb_list_refs(self, cmd, args):
+    def __dispatch_sdb_list_refs(self, args):
         outcome = self.__db.list('refs')
 
         if outcome is not None:
