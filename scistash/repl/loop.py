@@ -44,28 +44,28 @@ class ReplHandler:
                 'scratch': 'curr_scratch',              # DONE
                 'edit': 'curr_edit',
                 'tag': {
-                    'add': 'art_tag_add',
-                    'rem': 'art_tag_rem',
-                    'show': 'art_tag_show'
+                    'add': 'curr_tag_add',
+                    'rem': 'curr_tag_rem',
+                    'show': 'curr_tag_show'
                 },
-                'attach': {
-                    'file': {
-                        'add': 'curr_att_file_add',
-                        'edit': 'curr_att_file_edit',
-                        'rem': 'curr_att_file_rem',
-                        'show': 'curr_att_file_show',
-                        'save': 'curr_att_file_save'
-                    },
-                    'refkey': {
-                        'add': 'curr_att_rky_add',
-                        'rem': 'curr_att_rky_rem',
-                        'show': 'curr_att_rky_show'
-                    }
+                'file': {
+                    'add': 'curr_file_add',
+                    'edit': 'curr_file_edit',
+                    'rem': 'curr_file_rem',
+                    'show': 'curr_file_show',
+                    'save': 'curr_file_save'
+                },
+                'ref': {
+                    'add': 'curr_att_rky_add',
+                    'rem': 'curr_att_rky_rem',
+                    'show': 'curr_att_rky_show'
                 }
             },
             'pending': {
-                'show': 'pend_show',
-                'scratch': 'pend_scratch',
+                'show': 'pend_show',                    # DONE
+                'scratch' : 'pend_scratch',             # DONE
+                'scratchall': 'pend_scratch_all',       # DONE
+                'save': 'pend_save',                    # DONE
                 'checkout': {
                     'author': 'pend_chko_auth',
                     'article': 'pend_chko_art',
@@ -117,26 +117,11 @@ class ReplHandler:
                     'title': 'annot_find_title'
                 },
             },
-            'tags': {
-                'new': 'tags_new',
-                'show': 'tags_show',
-                'delete': 'tags_delete'
-            },
-            'files': {
-                'new': 'files_new',
-                'show': 'files_show',
-                'delete': 'files_delete'
-            },
-            'refs': {
-                'new': 'refs_new',
-                'show': 'refs_show',
-                'delete': 'refs_delete'
-            },
             'sdb': {
                 'list': {
                     'authors': 'sdb_list_auths',        # DONE
                     'articles': 'sdb_list_arts',        # DONE
-                    'annots': 'sdb_list_annots',
+                    'annots': 'sdb_list_annots',        # DONE
                     'tags': 'sdb_list_tags',            # DONE
                     'files': 'sdb_list_files',          # DONE
                     'refs': 'sdb_list_refs'             # DONE
@@ -177,8 +162,6 @@ class ReplHandler:
         self.__scomp.setvocab(self.levels.get('stash').keys())
         self.__currprompt = ''
         self.__current = None
-        self.__prioruuid = None
-
     @property
     def db(self):
         return self.__db
@@ -232,8 +215,6 @@ class ReplHandler:
         elif user_input[0] == 'saveall':
             # TODO
             pass
-        elif user_input[0] == 'scratchall':
-            self.__pending.scratchall(self.__fetchhash)
         elif user_input[0] == 'top':
             self.__opstack = ['stash']
         elif user_input[0] == 'help':
@@ -317,7 +298,9 @@ class ReplHandler:
 
     # Implementation of each command
     def dispatch(self, cmd, args):
+        ###########################################
         # Current
+        ###########################################
         if cmd == 'curr_id':
             self.__dispatch_curr_id(args)
         elif cmd == 'curr_fetch':
@@ -328,10 +311,23 @@ class ReplHandler:
             self.__dispatch_curr_save(args)
         elif cmd == 'curr_scratch':
             self.__dispatch_curr_scratch(args)
+        ###########################################
+        # Pending
+        ###########################################
+        elif cmd == 'pend_show':
+            self.__dispatch_pend_show(args)
+        elif cmd == 'pend_scratch_all':
+            self.__dispatch_pend_scratch_all(args)
+        elif cmd == 'pend_save':
+            self.__dispatch_pend_save(args)
+        ###########################################
         # Authors
+        ###########################################
         elif cmd == 'auth_new':
             self.__dispatch_auth_new(args)
-        # Sdb
+        ###########################################
+        # SDB
+        ###########################################
         elif cmd == 'sdb_list_auths':
             self.__dispatch_sdb_list_auths(args)
         elif cmd == 'sdb_list_arts':
@@ -346,6 +342,10 @@ class ReplHandler:
             self.__dispatch_sdb_list_refs(args)
         else:
             pass
+
+    ###########################################
+    # Current
+    ###########################################
 
     def __dispatch_curr_id(self, args):
         if self.current is None:
@@ -386,7 +386,7 @@ class ReplHandler:
     def __dispatch_curr_save(self, args):
         if self.current is not None:
             # Saving takes care of the fetch hash per object type
-            self.__db.save(self.current, self.__prioruuid, self.__fetchhash)
+            self.__db.save(self.current, self.__fetchhash)
             self.current = None
         else:
             click.echo(click.style('No current working element has been set.', fg='magenta'))
@@ -395,17 +395,97 @@ class ReplHandler:
         if self.current is not None:
             self.current = None
 
+    def __editauthor(self, args, prmpt=False):
+        if prmpt:
+            # Horrible Python shortcoming. This should be a do...while structure.
+            while True:
+                click.echo(self.current)
+                message = '''
+                Edit author:
+                ============
+                [1] Change first name
+                [2] Change last name
+                
+                [0] Exit editor
+                
+                '''
+                click.echo(message)
+                choice = click.prompt('Your edit choice: ', type=int)
+
+                if choice == 0:
+                    return
+                elif choice == 1:
+                    fname = click.prompt('Enter the new first name: ', type=str)
+                    self.current.firstname = fname
+                elif choice == 2:
+                    lname = click.prompt('Enter the new last name: ', type=str)
+                    self.current.lastname = lname
+                else:
+                    click.echo(click.style('Unrecognized option.', fg='red'))
+        else:
+            fields = ['firstname', 'lastname']
+            for i in range(0, len(args), 2):
+                if args[i] not in fields:
+                    click.echo(click.style(f'Unrecognized field {args[i]}.', fg='red'))
+                else:
+                    pass
+
+    def __dispatch_curr_edit(self, args):
+        if self.current is not None:
+            prmpt = False
+            editable = {
+                Author: self.__editauthor
+            }
+
+            if type(self.current) not in editable.keys():
+                click.echo(click.style('Tags, files and references can only be added or deleted.', fg='red'))
+                return
+
+            if not args:
+                prmpt = True
+            else:
+                if len(args) % 2 != 0:
+                    click.echo(click.style('Malformed argument list.', fg='red'))
+                    return
+
+            editable[type(self.current)](args, prmpt)
+
+        else:
+            click.echo(click.style('No current working element has been set.', fg='magenta'))
+
+    ###########################################
+    # Pending
+    ###########################################
+
+    def __dispatch_pend_show(self, args):
+        self.__pending.show(args[0])
+
+    def __dispatch_pend_scratch_all(self, args):
+        self.__pending.scratchall(self.__fetchhash)
+
+    def __dispatch_pend_save(self, args):
+        self.__pending.save(args[0], self.__db, self.__fetchhash)
+        pass
+
+    ###########################################
+    # Authors
+    ###########################################
+
     def __dispatch_auth_new(self, args):
         if args:
-            auth = Author(args[0], args[1])
+            auth = Author(args[0], args[1], False)
             self.current = auth
             click.echo(click.style('New author created.', fg='blue'))
         else:
             fname = prompt('First name: ')
             lname = prompt('Last name: ')
-            auth = Author(fname, lname)
+            auth = Author(fname, lname, False)
             self.current = auth
             click.echo(click.style('New author created.', fg='blue'))
+
+    ###########################################
+    # SDB
+    ###########################################
 
     def __dispatch_sdb_list_auths(self, args):
         outcome = self.__db.list('authors')

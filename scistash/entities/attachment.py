@@ -5,12 +5,14 @@
 #
 # This software is intended for personal use and does not imply any guarantees
 # in functionality or performance.
+from scistash.entities.identifiable import IdentifiableEntity
 import uuid
 
 
-class Attachment:
+class Attachment(IdentifiableEntity):
 
     def __init__(self, objid: uuid.UUID, objcls:str, content):
+        super().__init__()
         self.__objid = objid
         self.__objcls = objcls
         self.__content = content

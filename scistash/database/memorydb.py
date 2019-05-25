@@ -11,6 +11,7 @@ from scistash.entities.annotation import Annotation
 from scistash.entities.tag import Tag
 from scistash.entities.rfile import RefFile
 from scistash.entities.reference import Reference
+from scistash.database.sqlitedb import SQLiteHandler
 import click
 import uuid
 
@@ -107,3 +108,118 @@ class MemoryDBHandler:
                 Reference: []
             }
             click.echo('[IMemDB] All in-memory stash objects have been scratched.')
+
+    def testMemEmpty(self):
+        return (not self.__data[Author]) & (not self.__data[Article]) & (not self.__data[Annotation]) & \
+               (not self.__data[Tag]) & (not self.__data[RefFile]) & (not self.__data[Reference])
+
+    def show(self, arg):
+        if self.testMemEmpty():
+            click.echo(click.style('[IMemDB] No pending entities in memory database', fg='blue'))
+            click.echo('\n')
+        else:
+            if arg=='all':
+                click.echo(click.style('[IMemDB] Pending authors', fg='blue'))
+
+                for author in self.__data[Author]:
+                    click.echo(click.style(str(author), fg='blue'))
+
+                click.echo('\n')
+
+                click.echo(click.style('[IMemDB] Pending articles', fg='blue'))
+
+                for article in self.__data[Article]:
+                    click.echo(click.style(str(article), fg='blue'))
+
+                click.echo('\n')
+
+                click.echo(click.style('[IMemDB] Pending annotations', fg='blue'))
+
+                for annotation in self.__data[Annotation]:
+                    click.echo(click.style(str(annotation), fg='blue'))
+
+                click.echo('\n')
+
+                click.echo(click.style('[IMemDB] Pending tags', fg='blue'))
+
+                for tag in self.__data[Tag]:
+                    click.echo(click.style(str(tag), fg='blue'))
+
+                click.echo('\n')
+
+                click.echo(click.style('[IMemDB] Pending files', fg='blue'))
+
+                for reffile in self.__data[RefFile]:
+                    click.echo(click.style(str(reffile), fg='blue'))
+
+                click.echo('\n')
+
+                click.echo(click.style('[IMemDB] Pending references', fg='blue'))
+
+                for reference in self.__data[Reference]:
+                    click.echo(click.style(str(reference), fg='blue'))
+
+                click.echo('\n')
+            elif arg in ['authors', 'articles', 'annotations', 'tags', 'files', 'refs']:
+                __tabletotypemapper = {
+                    'authors': Author,
+                    'articles': Article,
+                    'annotations': Annotation,
+                    'tags': Tag,
+                    'files': RefFile,
+                    'refs': Reference
+                }
+
+                click.echo(click.style(f'[IMemDB] Pending { arg }', fg='blue'))
+
+                for entity in self.__data[__tabletotypemapper[arg]]:
+                    click.echo(click.style(str(entity), fg='blue'))
+            else:
+                click.echo(click.style(f'[IMemDB] Unrecognized entity \'{ arg }\'.', fg='magenta'))
+
+    def save(self, target, dbhandler: SQLiteHandler, fhash: dict):
+        if self.testMemEmpty():
+            click.echo(click.style('[IMemDB] No pending entities in memory database to be saved', fg='blue'))
+            click.echo('\n')
+        else:
+            if target=='all':
+                click.echo(click.style('[IMemDB] Saving pending authors', fg='blue'))
+                for author in self.__data[Author]:
+                    dbhandler.save(author, fhash)
+
+                click.echo(click.style('[IMemDB] Saving pending articles', fg='blue'))
+                for article in self.__data[Article]:
+                    dbhandler.save(article, fhash)
+
+                click.echo(click.style('[IMemDB] Saving pending annotations', fg='blue'))
+                for annotation in self.__data[Annotation]:
+                    dbhandler.save(annotation, fhash)
+
+                click.echo(click.style('[IMemDB] Saving pending tags', fg='blue'))
+                for tag in self.__data[Tag]:
+                    dbhandler.save(tag, fhash)
+
+                click.echo(click.style('[IMemDB] Saving pending files', fg='blue'))
+                for reffile in self.__data[RefFile]:
+                    dbhandler.save(reffile, fhash)
+
+                click.echo(click.style('[IMemDB] Saving pending references', fg='blue'))
+                for reference in self.__data[Reference]:
+                    dbhandler.save(reference, fhash)
+            elif target in ['authors', 'articles', 'annotations', 'tags', 'files', 'refs']:
+                __tabletotypemapper = {
+                    'authors': Author,
+                    'articles': Article,
+                    'annotations': Annotation,
+                    'tags': Tag,
+                    'files': RefFile,
+                    'refs': Reference
+                }
+
+                click.echo(click.style(f'[IMemDB] Saving pending { target }', fg='blue'))
+
+                for entity in self.__data[__tabletotypemapper[target]]:
+                    dbhandler.save(entity, fhash)
+            else:
+                click.echo(click.style(f'[IMemDB] Unrecognized entity \'{ target }\'.', fg='magenta'))
+

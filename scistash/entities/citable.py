@@ -5,12 +5,13 @@
 #
 # This software is intended for personal use and does not imply any guarantees
 # in functionality or performance.
+from scistash.entities.identifiable import IdentifiableEntity
 import uuid
 
 
-class CitableEntity:
+class CitableEntity(IdentifiableEntity):
     def __init__(self, refkey='', authors=None, title='', year=0):
-        self.__id = None
+        super().__init__()
         self.__refkey = refkey
         if authors is None:
             self.__authors = []
@@ -18,10 +19,6 @@ class CitableEntity:
             self.__authors = authors
         self.__title = title
         self.__year = year
-
-    @property
-    def id(self):
-        return self.__id
 
     @property
     def refkey(self):
@@ -42,22 +39,22 @@ class CitableEntity:
     @refkey.setter
     def refkey(self, val):
         self.__key = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        self.id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @authors.setter
     def authors(self, val):
         self.__authors = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        self.id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @title.setter
     def title(self, val):
         self.__title = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        self.id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @year.setter
     def year(self, val):
         self.__year = str(val)
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        self.id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     def __str__(self):
         authstr = '; '.join(self.authors[:-1])+' and ' + self.authors[-1]

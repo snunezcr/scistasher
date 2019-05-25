@@ -12,7 +12,7 @@ import uuid
 class Article(CitableEntity):
 
     def __init__(self, refkey='', authors=None, title='', year=0, journal='', volume=0,
-                 number=0, pages=(0, 0), retracted=False):
+                 number=0, pages=(0, 0), retracted=False, fdb=False):
         super().__init__(refkey, authors, title, year)
         self.__journal = journal
         self.__volume = volume
@@ -20,6 +20,7 @@ class Article(CitableEntity):
         self.__pages = pages
         self.__retracted = retracted
         self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        self.fromDB = fdb
 
     @property
     def journal(self):
@@ -56,22 +57,22 @@ class Article(CitableEntity):
     @journal.setter
     def journal(self, val):
         self.__journal = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @volume.setter
     def volume(self, val):
         self.__volume = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @number.setter
     def number(self, val):
         self.__number = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @pages.setter
     def pages(self, val):
         self.__pages = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     def stringify(self):
         return ''.join([

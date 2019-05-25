@@ -5,17 +5,20 @@
 #
 # This software is intended for personal use and does not imply any guarantees
 # in functionality or performance.
+from scistash.entities.identifiable import IdentifiableEntity
 import uuid
 
 
-class Annotation:
+class Annotation(IdentifiableEntity):
 
-    def __init__(self, objuuid: uuid.UUID, objcls: type, sm: str, info: str):
+    def __init__(self, objuuid: uuid.UUID, objcls: type, sm: str, info: str, fdb: bool):
+        super().__init__()
         self.__objuuid = objuuid
         self.__objcls = objcls
         self.__summary = sm
         self.__info = info
         self.__id = uuid.uuid3(uuid.NAMESPACE_OID, str(self.__objuuid) + self.__summary + self.__info)
+        self.fromDB = fdb
 
     @property
     def id(self):
@@ -56,7 +59,7 @@ class Annotation:
     @info.setter
     def info(self, val):
         self.__info = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     def stringify(self):
         return str(self.__objuuid) + self.__summary + self.__info

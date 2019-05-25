@@ -5,19 +5,22 @@
 #
 # This software is intended for personal use and does not imply any guarantees
 # in functionality or performance.
+from scistash.entities.identifiable import IdentifiableEntity
 import uuid
 
 
-class Author:
+class Author(IdentifiableEntity):
 
-    def __init__(self, first='', last=''):
+    def __init__(self, first: str, last: str, fdb: bool):
+        super().__init__()
         self.__firstname = first
         self.__lastname = last
         self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        self.fromDB = fdb
 
     @property
     def id(self):
-        return self.__id
+        return self.id
 
     @property
     def firstname(self):
@@ -42,12 +45,12 @@ class Author:
     @firstname.setter
     def firstname(self, val):
         self.__firstname = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     @lastname.setter
     def lastname(self, val):
         self.__lastname = val
-        self.__id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+        super().id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
 
     def stringify(self):
         return self.firstname+self.lastname

@@ -11,10 +11,11 @@ from pathlib import Path
 
 class RefFile(Attachment):
 
-    def __init__(self, objid, objcls, path: Path, ftyp: str, desc: str, fsz=0, cnt=None):
+    def __init__(self, objid, objcls, path: Path, ftyp: str, desc: str, fsz: int, cnt: bytes, fdb: bool):
         self.__fname = path.name
         self.__ftype = ftyp
         self.__desc = desc
+        self.fromDB = fdb
 
         if cnt is None:
             # Creating from file

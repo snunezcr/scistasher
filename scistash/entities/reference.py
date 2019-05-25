@@ -11,8 +11,9 @@ import uuid
 
 class Reference(Attachment):
 
-    def __init__(self, objid, objcls, refkey: uuid.UUID):
+    def __init__(self, objid, objcls, refkey: uuid.UUID, fdb: bool):
         super().__init__(objid, objcls, refkey)
+        self.fromDB = fdb
 
     def __str__(self):
         return '==> Tag: {3}\n\t<{0},{1}> {2}'.format(self.objid, self.objcls, self.content, self.id)

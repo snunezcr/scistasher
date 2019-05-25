@@ -147,7 +147,8 @@ class SQLiteHandler:
     @staticmethod
     def __tupletoauthor(tp):
         lid, fn, ln = tp
-        return Author(fn, ln)
+        author = Author(fn, ln, True)
+        return author
 
     @staticmethod
     def __tupletoarticle(tp):
@@ -157,24 +158,24 @@ class SQLiteHandler:
     @staticmethod
     def __tupletoannotation(tp):
         lid, oid, ocls, sm, ifo = tp
-        return Annotation(oid, ocls, sm, ifo)
+        return Annotation(oid, ocls, sm, ifo, True)
 
     @staticmethod
     def __tupletotag(tp):
         lid, oid, ocls, cnt = tp
-        return Tag(oid, ocls, cnt)
+        return Tag(oid, ocls, cnt, True)
 
     # This includes the blob
     # TODO: in future versions, depending on the size of objects, a total memory quota is needed as a macro parameter
     @staticmethod
     def __tupletofile(tp):
         lid, oid, ocls, fn, ft, ds, fs, cn = tp
-        return RefFile(oid, fn, ft, ds, fs, cn)
+        return RefFile(oid, ocls, fn, ft, ds, fs, cn, True)
 
     @staticmethod
     def __tupletoref(tp):
         lid, oid, ocls, rid = tp
-        return Reference(oid, ocls, rid)
+        return Reference(oid, ocls, rid, True)
 
     # Helper function to remove tags, files and references
     def __deletedecorators(self, did: uuid.UUID, fhash: dict):
@@ -275,30 +276,30 @@ class SQLiteHandler:
             fhash.pop(did, None)
 
     # We use these functions to both create or edit database records
-    def __authortorow(self, obj: Author, prior: uuid.UUID, fhash: dict):
-        if prior is not None:
+    def __authortorow(self, obj: Author, fhash: dict):
+        if obj.priorid is not None:
             # Delete the prior id before modification, insert the new one
-            self.__deleteinternal(prior, Author, fhash)
+            self.__deleteinternal(obj.priorid, Author, fhash)
             # Update existing annotations and decorators
             # Todo: this breaks the consistency element of ids. Need to check later.
-            self.__cursor.execute(f'UPDATE annotations SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE annotations SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
 
         self.__cursor.execute(f'INSERT INTO authors VALUES (\"{obj.id}\", \"{obj.firstname}\", \"{obj.lastname}\")')
         fhash[obj.id] = Author
 
-    def __articletorow(self, obj: Article, prior: uuid.UUID, fhash: dict):
-        if prior is not None:
+    def __articletorow(self, obj: Article, fhash: dict):
+        if obj.priorid is not None:
             # Delete the prior id before modification, including author-article ties, insert the new one
-            self.__deleteinternal(prior, Article, fhash)
-            self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE artuuid=\"{prior}\"')
+            self.__deleteinternal(obj.priorid, Article, fhash)
+            self.__cursor.execute(f'DELETE FROM authorsperarticle WHERE artuuid=\"{obj.priorid}\"')
             # Update existing annotations and decorators
-            self.__cursor.execute(f'UPDATE annotations SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE annotations SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
 
         # Insert one row per article
         self.__cursor.execute(
@@ -311,32 +312,32 @@ class SQLiteHandler:
                 self.__authortorow(auth, fhash)
             self.__cursor.execute(f'INSERT INTO authorsperarticle VALUES (\"{obj.id}\", \"{auth.id})\"')
 
-    def __annotationtorow(self, obj: Annotation, prior: uuid.UUID, fhash: dict):
-        if prior is not None:
+    def __annotationtorow(self, obj: Annotation, fhash: dict):
+        if obj.priorid is not None:
             # Delete the prior id before modification, including annotation-object ties, insert the new one
-            self.__deleteinternal(prior, Annotation, fhash)
-            self.__cursor.execute(f'DELETE FROM annotations WHERE artuuid=\"{prior}\"')
+            self.__deleteinternal(obj.priorid, Annotation, fhash)
+            self.__cursor.execute(f'DELETE FROM annotations WHERE artuuid=\"{obj.priorid}\"')
             # Update existing decorators
-            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
-            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{prior}\"')
+            self.__cursor.execute(f'UPDATE tags SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE files SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
+            self.__cursor.execute(f'UPDATE refs SET objid=\"{obj.id}\" WHERE objid=\"{obj.priorid}\"')
 
         # Insert one row per annotation
         self.__cursor.execute(
             f'INSERT INTO annotations VALUES (\"{obj.id}\", \"{obj.objuuid}\", {obj.objcls}, \"{obj.summary}\", \"{obj.info}\")')
         fhash[obj.id] = Annotation
 
-    def __tagtorow(self, obj: Tag, prior, fhash: dict):
+    def __tagtorow(self, obj: Tag, fhash: dict):
         self.__cursor.execute(
             f'INSERT INTO tags VALUES (\"{obj.id}\", \"{obj.objid}\", {obj.objcls}, \"{obj.content}\")')
         fhash[obj.id] = Tag
 
-    def __filetorow(self, obj: RefFile, prior, fhash: dict):
+    def __filetorow(self, obj: RefFile, fhash: dict):
         self.__cursor.execute(
             f'INSERT INTO tags VALUES (\"{obj.id}\", \"{obj.objid}\", \"{obj.objcls}\", \"{obj.fname}\", \"{obj.ftype}\", \"{obj.desc}\", \"{obj.desc}\", {obj.fsize}, {sqlite3.Binary(obj.content)})')
         fhash[obj.id] = RefFile
 
-    def __reftorow(self, obj: Reference, prior, fhash: dict):
+    def __reftorow(self, obj: Reference, fhash: dict):
         self.__cursor.execute(f'INSERT INTO refs VALUES ({obj.id}, {obj.objid}, {obj.objcls}, {obj.content})')
         fhash[obj.id] = Reference
 
@@ -366,14 +367,14 @@ class SQLiteHandler:
     # should be mirrored in the
 
     # TODO: this needs to be refactored properly
-    def __listrendertuple(self, tuple, objtype):
+    def __listrendertuple(self, tpl, objtype):
         # Authors can be rendered easily
         if objtype == 'authors':
-            iid, fn, ln = tuple
+            iid, fn, ln = tpl
             return '\t{0}\t\t{2}, {1}'.format(iid, fn, ln)
         # For an article tuple, find all authors. If no authors exist, raise error. Otherwise, list last names.
         elif objtype == 'articles':
-            iid, rk, yy, tt, jn, vm, nm, ps, pe, rt = tuple
+            iid, rk, yy, tt, jn, vm, nm, ps, pe, rt = tpl
             query = f'''
             SELECT * FROM authors 
             INNER JOIN authorsperarticle ON authors.id = authorsperarticle.authuuid 
@@ -396,7 +397,7 @@ class SQLiteHandler:
                                                                           tt, vm, nm, ps, pe, '!' if rt else ' ')
         # For annotations, retrieve a simplified version of the object
         elif objtype == 'annotations':
-            iid, oid, cls, inf = tuple
+            iid, oid, cls, inf = tpl
 
             if cls == 'author':
                 self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
@@ -424,7 +425,7 @@ class SQLiteHandler:
                 return None
         # Tags
         elif objtype == 'tags':
-            iid, oid, cls, cnt = tuple
+            iid, oid, cls, cnt = tpl
 
             if cls == 'author':
                 self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
@@ -461,7 +462,7 @@ class SQLiteHandler:
                 return None
         # Files
         elif objtype == 'files':
-            iid, oid, cls, fnm, fty, dsc, fsz = tuple
+            iid, oid, cls, fnm, fty, dsc, fsz = tpl
 
             if cls == 'author':
                 self.__cursor.execute(f'SELECT firstname, lastname FROM authors WHERE uuid=\"{oid}\"')
@@ -501,7 +502,7 @@ class SQLiteHandler:
                 return None
         # References
         elif objtype == 'refs':
-            iid, oid, cls, rid = tuple
+            iid, oid, cls, rid = tpl
 
             self.__cursor.execute(f'SELECT year, title, journal FROM articles WHERE id={rid}')
             rdata = self.__cursor.fetchone()
@@ -618,6 +619,7 @@ class SQLiteHandler:
             else:
                 return None
 
+    # TODO: fetch recursive for authors and articles
     def checkout(self, oid: uuid.UUID, fhash: dict):
         if oid not in fhash.keys():
             click.echo(click.style('[FetchH] Object not present across the complete stash.', fg='magenta'))
@@ -626,24 +628,21 @@ class SQLiteHandler:
         otype = fhash[oid]
         return self.fetch(oid, otype)
 
-    def save(self, obj, prior: uuid.UUID, fhash: dict):
+    def save(self, obj, fhash: dict):
         if obj is None:
             click.echo(click.style('[SQLite] Cannot save null object.', fg='red'))
-        elif obj.id == prior:
-            click.echo(click.style('[SQLite] Ignoring saving for same object.', fg='magenta'))
+        elif (obj.id == obj.priorid) and (obj.fromDB):
+            click.echo(click.style('[SQLite] Ignoring saving for existing unmodified object in DB.', fg='red'))
         else:
-            if self.exists(obj):
-                click.echo(click.style('[SQLite] the object already exists.', fg='red'))
-            else:
-                objecttoinsertfunction = {
-                    Author: self.__authortorow,
-                    Article: self.__articletorow,
-                    Annotation: self.__annotationtorow,
-                    Tag: self.__tagtorow,
-                    RefFile: self.__filetorow,
-                    Reference: self.__reftorow
-                }
-                objecttoinsertfunction[type(obj)](obj, prior, fhash)
+            objecttoinsertfunction = {
+                Author: self.__authortorow,
+                Article: self.__articletorow,
+                Annotation: self.__annotationtorow,
+                Tag: self.__tagtorow,
+                RefFile: self.__filetorow,
+                Reference: self.__reftorow
+            }
+            objecttoinsertfunction[type(obj)](obj, fhash)
 
     def __deleteinternal(self, did: uuid.UUID, objtype: type, fhash: dict):
         objecttodeletefunction = {
