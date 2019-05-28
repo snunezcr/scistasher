@@ -5,6 +5,7 @@
 #
 # This software is intended for personal use and does not imply any guarantees
 # in functionality or performance.
+from scistash.entities.author import Author
 from scistash.entities.identifiable import IdentifiableEntity
 import uuid
 
@@ -55,6 +56,25 @@ class CitableEntity(IdentifiableEntity):
     def year(self, val):
         self.__year = str(val)
         self.id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+
+    def addauthor(self, a: Author):
+        found = list(filter(lambda x: x.id == a.id, self.__authors))
+
+        if found:
+            return False
+        else:
+            self.__authors.append(a)
+            self.id = uuid.uuid3(uuid.NAMESPACE_OID, self.stringify())
+            return True
+
+    def delauthor(self, uuid:uuid):
+        found = list(filter(lambda x: x.id == a.id, self.__authors))
+
+        # At any moment, there must only be one instance of any unique author in 'found'
+        if found:
+            self.__authors.remove(found[0])
+        else:
+            return False
 
     def __str__(self):
         authstr = '; '.join(self.authors[:-1])+' and ' + self.authors[-1]

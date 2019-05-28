@@ -598,7 +598,7 @@ class SQLiteHandler:
         else:
             return self.exists_fetch(obj.id, type(obj))
 
-    def fetch(self, oid: uuid.UUID, otype):
+    def object_fetch(self, oid: uuid.UUID, otype):
         if not self.exists_fetch(oid, otype):
             click.echo(click.style('[SQLite] Object not present in stash.', fg='magenta'))
             return None
@@ -626,7 +626,7 @@ class SQLiteHandler:
             return None
 
         otype = fhash[oid]
-        return self.fetch(oid, otype)
+        return self.object_fetch(oid, otype)
 
     def save(self, obj, fhash: dict):
         if obj is None:

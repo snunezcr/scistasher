@@ -60,3 +60,7 @@ class Author(IdentifiableEntity):
 
     def __str__(self):
         return '==> Author: {2}\n\t{1}, {0}'.format(self.firstname, self.lastname, self.id)
+
+    def numberedref(self, seq: int):
+        return f'\t[{ seq }] \t{ self.id } - {self.lastname}, {self.firstname}'
+

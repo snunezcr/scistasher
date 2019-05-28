@@ -81,6 +81,15 @@ class MemoryDBHandler:
 
             return data
 
+    def object_fetch(self, oid: uuid.UUID, otype):
+        if not self.exists_fetch(oid, otype):
+            click.echo(click.style('[IMemDB] Object does not exist in memory.', fg='magenta'))
+            return None
+
+        else:
+            click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
+            return self.__fetch(oid, otype)
+
     def scratch_fetch(self, oid: uuid.UUID, otype, fhash: dict):
         if otype not in self.__data.keys():
             click.echo(click.style('[IMemDB] Unknown object type.', fg='red'))
@@ -112,6 +121,41 @@ class MemoryDBHandler:
     def testMemEmpty(self):
         return (not self.__data[Author]) & (not self.__data[Article]) & (not self.__data[Annotation]) & \
                (not self.__data[Tag]) & (not self.__data[RefFile]) & (not self.__data[Reference])
+
+    def scratch(self, arg):
+        if self.testMemEmpty():
+            click.echo(click.style('[IMemDB] No pending entities in memory database', fg='blue'))
+            click.echo('\n')
+        else:
+            if arg=='all':
+                click.echo(click.style('[IMemDB] Scratching authors', fg='blue'))
+                self.__data[Author] = []
+                click.echo(click.style('[IMemDB] Scratching articles', fg='blue'))
+                self.__data[Article] = []
+                click.echo(click.style('[IMemDB] Scratching annotations', fg='blue'))
+                self.__data[Annotation] = []
+                click.echo(click.style('[IMemDB] Scratching tags', fg='blue'))
+                self.__data[Tag] = []
+                click.echo(click.style('[IMemDB] Scratching files', fg='blue'))
+                self.__data[RefFile] = []
+                click.echo(click.style('[IMemDB] Scratching references', fg='blue'))
+                self.__data[Reference] = []
+                click.echo('\n')
+            elif arg in ['authors', 'articles', 'annotations', 'tags', 'files', 'refs']:
+                __tabletotypemapper = {
+                    'authors': Author,
+                    'articles': Article,
+                    'annotations': Annotation,
+                    'tags': Tag,
+                    'files': RefFile,
+                    'refs': Reference
+                }
+
+                click.echo(click.style(f'[IMemDB] Scratching { arg }', fg='blue'))
+
+                self.__data[__tabletotypemapper[arg]] = []
+            else:
+                click.echo(click.style(f'[IMemDB] Unrecognized entity \'{ arg }\'.', fg='magenta'))
 
     def show(self, arg):
         if self.testMemEmpty():

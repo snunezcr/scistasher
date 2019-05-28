@@ -43,6 +43,7 @@ class ReplHandler:
                 'save': 'curr_save',                    # DONE
                 'scratch': 'curr_scratch',              # DONE
                 'edit': 'curr_edit',
+                'annotate': 'curr_annot',
                 'tag': {
                     'add': 'curr_tag_add',
                     'rem': 'curr_tag_rem',
@@ -50,10 +51,8 @@ class ReplHandler:
                 },
                 'file': {
                     'add': 'curr_file_add',
-                    'edit': 'curr_file_edit',
                     'rem': 'curr_file_rem',
                     'show': 'curr_file_show',
-                    'save': 'curr_file_save'
                 },
                 'ref': {
                     'add': 'curr_att_rky_add',
@@ -70,9 +69,6 @@ class ReplHandler:
                     'author': 'pend_chko_auth',
                     'article': 'pend_chko_art',
                     'annotation': 'pend_chko_annot',
-                    'tag': 'pend_chko_tag',
-                    'file': 'pend_chko_file',
-                    'ref': 'pend_chko_ref'
                 }
             },
             'authors': {
@@ -135,8 +131,6 @@ class ReplHandler:
                 }
             },
             'help': 'meta',
-            'saveall': 'meta',
-            'scratchall': 'meta',                   # DONE
             'clear': 'meta',                        # DONE
             'end': 'meta',                          # DONE
             'top': 'meta',                          # DONE
@@ -212,9 +206,6 @@ class ReplHandler:
             quit()
         elif user_input[0] == 'clear':
             click.clear()
-        elif user_input[0] == 'saveall':
-            # TODO
-            pass
         elif user_input[0] == 'top':
             self.__opstack = ['stash']
         elif user_input[0] == 'help':
@@ -316,10 +307,18 @@ class ReplHandler:
         ###########################################
         elif cmd == 'pend_show':
             self.__dispatch_pend_show(args)
+        elif cmd == 'pend_scratch':
+            self.__dispatch_pend_scratch(args)
         elif cmd == 'pend_scratch_all':
             self.__dispatch_pend_scratch_all(args)
         elif cmd == 'pend_save':
             self.__dispatch_pend_save(args)
+        elif cmd == 'pend_chko_auth':
+            self.__dispatch_pend_chko_auth(args)
+        elif cmd == 'pend_chko_art':
+            self.__dispatch_pend_chko_art(args)
+        elif cmd == 'pend_chko_annot':
+            self.__dispatch_pend_chko_annot(args)
         ###########################################
         # Authors
         ###########################################
@@ -360,7 +359,7 @@ class ReplHandler:
             args.append(user_input.split()[0])
 
         try:
-            obj = self.__db.fetch(uuid.UUID(args[0]), self.__fetchhash[uuid.UUID(args[0])])
+            obj = self.__db.object_fetch(uuid.UUID(args[0]), self.__fetchhash[uuid.UUID(args[0])])
         except Exception as e:
             click.echo(click.style('Malformed uuid ({0}).'.format(e), fg='red'))
             obj = None
@@ -430,11 +429,94 @@ class ReplHandler:
                 else:
                     pass
 
+    def __editarticle(self, args, prmpt=False):
+        if prmpt:
+            # Horrible Python shortcoming. This should be a do...while structure.
+            while True:
+                click.echo(self.current)
+                message = '''
+                Edit article:
+                =============
+                [1] Change refkey
+                [2] Change year
+                [3] Change title
+                [4] Change journal
+                [5] Change volume
+                [6] Change number
+                [7] Change pages
+                [8] Add author to article
+                [9] Delete author from article
+
+                [0] Exit editor
+
+                '''
+                click.echo(message)
+                choice = click.prompt('Your edit choice: ', type=int)
+
+                if choice == 0:
+                    return
+                elif choice == 1:
+                    rkey = click.prompt('Enter the new refkey: ', type=str)
+                    self.current.refkey = rkey
+                elif choice == 2:
+                    yr = click.prompt('Enter the new year: ', type=str)
+                    self.current.year = yr
+                elif choice == 3:
+                    ttl = click.prompt('Enter the new title: ', type=str)
+                    self.current.title = ttl
+                elif choice == 4:
+                    jrnl = click.prompt('Enter the new journal: ', type=str)
+                    self.current.journal = jrnl
+                elif choice == 5:
+                    vlm = click.prompt('Enter the new volume: ', type=str)
+                    self.current.volume = vlm
+                elif choice == 6:
+                    nmbr = click.prompt('Enter the new number: ', type=str)
+                    self.current.number = nmbr
+                elif choice == 7:
+                    pgs_txt = (click.prompt('Enter the new pages (start-end): ', type=str)).split('-')
+                    if len(pgs_txt) != 2:
+                        click.echo(click.style('Wrong pages input format.', fg='red'))
+                    else:
+                        self.current.pages = (pgs_txt[0], pgs_txt[1])
+                elif choice == 8:
+                    auuid = click.prompt('Enter the new author uuid: ', type=str)
+
+                    # Case 1: search in pending
+                    if self.__pending.exists_fetch(auuid, Author):
+                        author = self.__pending.object_fetch(auuid, Author)
+                    # Case 2: search in DB, add to pending (in case modifications are needed)
+                    elif self.__db.exists_fetch(auuid, Author):
+                        author = self.__db.object_fetch(auuid, Author)
+                        self.__pending.put(author, self.__fetchhash)
+                    # Case 3: create a new author from scratch and add it
+                    else:
+                        fname = prompt('First name: ')
+                        lname = prompt('Last name: ')
+                        author = Author(fname, lname, False)
+                        self.__pending.put(author, self.__fetchhash)
+                    if not self.current.authors.addauthor(author):
+                        click.echo(click.style('Author has already been associated with this article.', fg='magenta'))
+                elif choice == 9:
+                    nmbr = click.prompt('Enter the new author uuid: ', type=str)
+
+                    self.current.number = nmbr
+                else:
+                    click.echo(click.style('Unrecognized option.', fg='red'))
+        else:
+            fields = ['refkey', 'year', 'title', 'journal', 'volume', 'number', 'pages']
+            for i in range(0, len(args), 2):
+                if args[i] not in fields:
+                    click.echo(click.style(f'Unrecognized field {args[i]}.', fg='red'))
+                else:
+                    pass
+
     def __dispatch_curr_edit(self, args):
         if self.current is not None:
             prmpt = False
             editable = {
-                Author: self.__editauthor
+                Author: self.__editauthor,
+                Article: self.__editarticle
             }
 
             if type(self.current) not in editable.keys():
@@ -459,6 +541,9 @@ class ReplHandler:
 
     def __dispatch_pend_show(self, args):
         self.__pending.show(args[0])
+
+    def __dispatch_pend_scratch(self, args):
+        self.__pending.scratch(self.__fetchhash)
 
     def __dispatch_pend_scratch_all(self, args):
         self.__pending.scratchall(self.__fetchhash)
