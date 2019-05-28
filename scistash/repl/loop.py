@@ -66,9 +66,9 @@ class ReplHandler:
                 'scratchall': 'pend_scratch_all',       # DONE
                 'save': 'pend_save',                    # DONE
                 'checkout': {
-                    'author': 'pend_chko_auth',
-                    'article': 'pend_chko_art',
-                    'annotation': 'pend_chko_annot',
+                    'author': 'pend_chko_auth',         # DONE
+                    'article': 'pend_chko_art',         # DONE
+                    'annotation': 'pend_chko_annot',    # DONE
                 }
             },
             'authors': {
@@ -128,7 +128,8 @@ class ReplHandler:
                     'sql': 'sdb_dump_sql',
                     'bibtex': 'sdb_dump_bibtex',
                     'apa': 'sdb_dump_apa'
-                }
+                },
+                'import': 'sdb_import'
             },
             'help': 'meta',
             'clear': 'meta',                        # DONE
@@ -324,6 +325,8 @@ class ReplHandler:
         ###########################################
         elif cmd == 'auth_new':
             self.__dispatch_auth_new(args)
+        elif cmd == 'auth_new':
+            self.__dispatch_auth_new(args)
         ###########################################
         # SDB
         ###########################################
@@ -511,12 +514,48 @@ class ReplHandler:
                 else:
                     pass
 
+    def __editannotation(self, args, prmpt=False):
+        if prmpt:
+            # Horrible Python shortcoming. This should be a do...while structure.
+            while True:
+                click.echo(self.current)
+                message = '''
+                Edit annotation:
+                ============
+                [1] Change summary
+                [2] Change information
+
+                [0] Exit editor
+
+                '''
+                click.echo(message)
+                choice = click.prompt('Your edit choice: ', type=int)
+
+                if choice == 0:
+                    return
+                elif choice == 1:
+                    smry = click.prompt('Enter the new summary: ', type=str)
+                    self.current.summary = smry
+                elif choice == 2:
+                    info = click.edit('Enter the new information: ')
+                    self.current.info = info
+                else:
+                    click.echo(click.style('Unrecognized option.', fg='red'))
+        else:
+            fields = ['summary', 'info']
+            for i in range(0, len(args), 2):
+                if args[i] not in fields:
+                    click.echo(click.style(f'Unrecognized field {args[i]}.', fg='red'))
+                else:
+                    pass
+
     def __dispatch_curr_edit(self, args):
         if self.current is not None:
             prmpt = False
             editable = {
                 Author: self.__editauthor,
-                Article: self.__editarticle
+                Article: self.__editarticle,
+                Annotation: self.__editannotation
             }
 
             if type(self.current) not in editable.keys():
@@ -540,7 +579,10 @@ class ReplHandler:
     ###########################################
 
     def __dispatch_pend_show(self, args):
-        self.__pending.show(args[0])
+        if not args:
+            self.__pending.show('all')
+        else:
+            self.__pending.show(args[0])
 
     def __dispatch_pend_scratch(self, args):
         self.__pending.scratch(self.__fetchhash)
@@ -549,8 +591,31 @@ class ReplHandler:
         self.__pending.scratchall(self.__fetchhash)
 
     def __dispatch_pend_save(self, args):
-        self.__pending.save(args[0], self.__db, self.__fetchhash)
-        pass
+        if not args:
+            self.__pending.save('all', self.__db, self.__fetchhash)
+        else:
+            self.__pending.save(args[0], self.__db, self.__fetchhash)
+
+    def __dispatch_pend_chko_auth(self, args):
+        data = self.__pending.checkout_fetch(args[0], Author, self.__fetchhash)
+        if data is not None:
+            self.current = data
+        else:
+            click.echo(click.style(f'Author with UUID { args[0] } does not exist.', fg='magenta'))
+
+    def __dispatch_pend_chko_art(self, args):
+        data = self.__pending.checkout_fetch(args[0], Article, self.__fetchhash)
+        if data is not None:
+            self.current = data
+        else:
+            click.echo(click.style(f'Article with UUID {args[0]} does not exist.', fg='magenta'))
+
+    def __dispatch_pend_chko_annot(self, args):
+        data = self.__pending.checkout_fetch(args[0], Annotation, self.__fetchhash)
+        if data is not None:
+            self.current = data
+        else:
+            click.echo(click.style(f'Annotation with UUID {args[0]} does not exist.', fg='magenta'))
 
     ###########################################
     # Authors
